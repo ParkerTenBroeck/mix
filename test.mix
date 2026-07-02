@@ -1,0 +1,7 @@
+{
+    beep = inc (inc 1),
+    list = [ (func: 12), (func 12) ],
+    meow = "nya",
+    inc = x:x+1,
+    value = 12.2,
+}
