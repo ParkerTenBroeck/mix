@@ -5,7 +5,7 @@ use std::{
     path::PathBuf,
 };
 
-use dumpster::{Trace, TraceWith, unsync::Gc};
+use dumpster::{Trace, unsync::Gc};
 
 use crate::{
     bytecode::{CodeLoc, LambdaId},
@@ -18,7 +18,7 @@ pub enum Value {
     Bool(bool),
     Int(i64),
     Float(f64),
-    String(Gc<String>),
+    String(String),
     Path(PathBuf),
     List(List),
     AttrSet(AttrSet),
@@ -44,25 +44,10 @@ impl std::fmt::Debug for NativeLambda {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Trace)]
 pub enum Lambda {
     Lambda { scope: Scope, lambda: LambdaId },
-    NativeLambda(NativeLambda),
-}
-
-unsafe impl<V: dumpster::Visitor> TraceWith<V> for Lambda {
-    fn accept(&self, visitor: &mut V) -> Result<(), ()> {
-        match self {
-            Lambda::Lambda { scope, .. } => {
-                ::dumpster::TraceWith::accept(scope, visitor)?;
-                ::core::result::Result::Ok(())
-            }
-            Lambda::NativeLambda(field0) => {
-                ::dumpster::TraceWith::accept(field0, visitor)?;
-                ::core::result::Result::Ok(())
-            }
-        }
-    }
+    // NativeLambda(NativeLambda),
 }
 
 #[derive(Clone, Trace)]
@@ -71,7 +56,40 @@ pub enum LazyExpr {
     Evaluated(Value),
 }
 
+impl std::fmt::Debug for LazyExpr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Unevaluated(arg0) => if let Ok(borrow) = arg0.try_borrow(){
+                f.debug_tuple("Unevaluated").field(&*borrow).finish()
+            }else{
+                f.debug_tuple("Unevaluated").finish()
+            },
+            Self::Evaluated(arg0) => f.debug_tuple("Evaluated").field(arg0).finish(),
+        }
+    }
+}
+
 impl LazyExpr {
+    pub fn construct_begin(code: CodeLoc) -> Self {
+        Self::Unevaluated(Gc::new(RefCell::new(LazyExprState::Constructing(code))))
+    }
+
+    pub fn construct_end(&self, scope: Scope) -> Result<(), ()> {
+        match self {
+            LazyExpr::Unevaluated(gc) => {
+                let mut inner = gc.borrow_mut();
+                match &*inner{
+                    LazyExprState::Constructing(code_loc) => {
+                        *inner = LazyExprState::Unevaluated(*code_loc, scope);
+                        Ok(())
+                    },
+                    _ => Err(())
+                }
+            },
+            _ => Err(())
+        }
+    }
+
     pub fn uneval(code: CodeLoc, scope: Scope) -> Self {
         Self::Unevaluated(Gc::new(RefCell::new(LazyExprState::Unevaluated(
             code, scope,
@@ -79,32 +97,22 @@ impl LazyExpr {
     }
 }
 
-impl std::fmt::Debug for LazyExpr {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "LazyExpr")
-    }
-}
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Trace)]
 pub enum LazyExprState {
+    Constructing(CodeLoc),
     Unevaluated(CodeLoc, Scope),
     Evaluating,
     Evaluated(Value),
 }
 
-unsafe impl<V: dumpster::Visitor> TraceWith<V> for LazyExprState {
-    #[inline]
-    fn accept(&self, visitor: &mut V) -> ::core::result::Result<(), ()> {
+impl std::fmt::Debug for LazyExprState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            LazyExprState::Unevaluated(_, scope) => {
-                ::dumpster::TraceWith::accept(scope, visitor)?;
-                ::core::result::Result::Ok(())
-            }
-            LazyExprState::Evaluating => ::core::result::Result::Ok(()),
-            LazyExprState::Evaluated(value) => {
-                ::dumpster::TraceWith::accept(value, visitor)?;
-                ::core::result::Result::Ok(())
-            }
+            Self::Constructing(arg0) => f.debug_tuple("Constructing").field(arg0).finish(),
+            Self::Unevaluated(arg0, _) => f.debug_tuple("Unevaluated").field(arg0).finish(),
+            Self::Evaluating => write!(f, "Evaluating"),
+            Self::Evaluated(arg0) => f.debug_tuple("Evaluated").field(arg0).finish(),
         }
     }
 }
@@ -134,19 +142,29 @@ impl Deref for List {
     }
 }
 
-#[derive(Clone, Default, Debug, Trace)]
+#[derive(Clone, Default, Trace)]
 pub struct AttrSet {
-    inner: Gc<HashMap<Gc<String>, LazyExpr>>,
+    inner: Gc<HashMap<String, LazyExpr>>,
 }
 
 impl AttrSet {
-    pub fn get_mut(&mut self) -> &mut HashMap<Gc<String>, LazyExpr> {
+    pub fn get_mut(&mut self) -> &mut HashMap<String, LazyExpr> {
         Gc::make_mut(&mut self.inner)
+    }
+
+    pub fn new(map: HashMap<String, LazyExpr>) -> Self{
+        Self { inner: Gc::new(map) }
+    }
+}
+
+impl std::fmt::Debug for AttrSet{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("AttrSet").field(&*self.inner).finish()
     }
 }
 
 impl Deref for AttrSet {
-    type Target = HashMap<Gc<String>, LazyExpr>;
+    type Target = HashMap<String, LazyExpr>;
 
     fn deref(&self) -> &Self::Target {
         &self.inner

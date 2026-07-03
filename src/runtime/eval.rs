@@ -4,7 +4,7 @@ use dumpster::unsync::Gc;
 
 use crate::{
     bytecode::CodeLoc,
-    runtime::{AttrSet, Lambda, List, Runtime, Value, scope::Scope},
+    runtime::{AttrSet, Lambda, LazyExpr, List, Runtime, Value, scope::Scope},
 };
 
 #[derive(Debug)]
@@ -75,46 +75,74 @@ impl<'a, 'b> Evaluator<'a, 'b> {
                 OpCode::Not => todo!(),
                 OpCode::Neg => todo!(),
 
-                OpCode::And(rhs) => todo!(),
-                OpCode::Or(rhs) => todo!(),
-                OpCode::LogImp(rhs) => todo!(),
+                OpCode::And(_)
+                | OpCode::Or(_) 
+                | OpCode::LogImp(_) => {
+                    let Value::Bool(lhs) = self.pop_value()? else { todo!() };
+                    match op {
+                        OpCode::And(rhs) if !lhs => {
+                            pos = pos + rhs; // skip rhs
+                            self.push_value(Value::Bool(false))?;
+                        },
+                        // execute rhs
+                        OpCode::And(_) if lhs => {} 
 
-                OpCode::If(then_expr, else_expr) => {
-                    let cond = self.pop_value()?;
-                    match cond {
-                        Value::Bool(cond) => {
-                            self.push_call((pos, scope.clone()))?;
-                            if cond {
-                                pos = then_expr;
-                            } else {
-                                pos = else_expr;
-                            }
-                        }
-                        _ => todo!(),
+                        // skip rhs
+                        OpCode::Or(rhs) if lhs => {
+                            pos = pos + rhs; 
+                            self.push_value(Value::Bool(true))?;
+                        },
+                        // execute rhs
+                        OpCode::Or(_) if !lhs => {} 
+
+                        // skip rhs
+                        OpCode::LogImp(rhs) if !lhs => {
+                            pos = pos + rhs; 
+                            self.push_value(Value::Bool(true))?;
+                        },
+                        // execute rhs
+                        OpCode::And(_) if lhs => {} 
+
+                        _ => unreachable!() 
+                    };
+                },
+
+                OpCode::If(code_loc_offset) => {
+                    let Value::Bool(cond) = self.pop_value()? else { todo!() };
+                    if !cond{
+                        pos = pos + code_loc_offset;
                     }
-                }
-                OpCode::CreateAttrSet => self.push_value(Value::AttrSet(AttrSet::default()))?,
-                OpCode::InitAttrExpr(expr) => {
-                    let path = self.pop_value()?;
+                },
+                OpCode::Branch(code_loc_offset) => pos = pos + code_loc_offset,
 
-                    let Value::Path(path) = &path else { todo!() };
-                    let path = path.iter().next().unwrap().display().to_string();
+                OpCode::CreateAttrSet(len) => {
+                    let mut map: std::collections::HashMap<String, LazyExpr> = Default::default();
 
-                    let mut attr_set = self.pop_value()?;
-                    match &mut attr_set {
-                        Value::AttrSet(attr_set) => {
-                            attr_set.get_mut();
-                            // .insert(path.into(), LazyExpr::uneval(expr));
-                        }
-                        _ => todo!(),
+                    for _ in 0..len {
+                        let op;
+                        (op, pos) = self.runtime.program.get(pos);
+                        let OpCode::InitAttrExpr(expr) = op else {todo!()};
+
+                        let path = self.pop_value()?;
+                        let Value::Path(path) = &path else { todo!() };
+                        let path = path.iter().next().unwrap().display().to_string();
+
+                        map.insert(path, LazyExpr::construct_begin(expr));
                     }
-                    self.push_value(attr_set)?;
-                }
-                OpCode::InitAttrPath => todo!(),
+                    let attrset = AttrSet::new(map);
+
+                    for element in attrset.values(){
+                        element.construct_end(Scope::new(attrset.clone(), scope.clone()));
+                    }
+                    self.value_stack.push(Value::AttrSet(attrset));
+                },
+                OpCode::InitAttrExpr(expr) => todo!(),
                 OpCode::CreateList(capacity) => {
                     self.push_value(Value::List(List::with_capacity(capacity)))?
                 }
-                OpCode::AppendList => {}
+                OpCode::AppendList(expr) => {
+
+                }
                 OpCode::Apply(loc) => {
                     self.push_call((pos, scope.clone()))?;
                     // Rc::new(super::Scope)
@@ -127,9 +155,10 @@ impl<'a, 'b> Evaluator<'a, 'b> {
                     };
                     self.push_value(Value::Lambda(lambda))?;
                 }
-                OpCode::LoadStr(str) => self.push_value(Value::String(Gc::new(str.into())))?,
+                OpCode::LoadStr(str) => self.push_value(Value::String(self.runtime.program.get_str(str).into()))?,
                 OpCode::LoadInt(int) => self.push_value(Value::Int(int))?,
                 OpCode::LoadFloat(float) => self.push_value(Value::Float(float))?,
+                OpCode::LoadBool(bool) => self.push_value(Value::Bool(bool))?,
 
                 OpCode::WithScope => todo!(),
                 OpCode::HasAttr => todo!(),
@@ -145,7 +174,7 @@ impl<'a, 'b> Evaluator<'a, 'b> {
                     let path = self.pop_value()?;
                     let Value::String(part) = part else { todo!() };
                     let Value::Path(mut path) = path else { todo!() };
-                    path.push(part.as_ref());
+                    path.push(part);
                     self.push_value(Value::Path(path))?;
                 }
                 OpCode::PopPathPart => todo!(),

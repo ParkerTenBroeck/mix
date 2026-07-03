@@ -1,6 +1,8 @@
-use mix::runtime::{Runtime, Value, files::Files};
+use mix::runtime::{Runtime, files::Files};
+
 
 fn main() {
+
     let files = Files::new(|path| match std::fs::read_to_string(path) {
         Ok(ok) => Ok(ok.into()),
         Err(err) => Err(format!("{}: {err}", path.display()).into()),
@@ -14,9 +16,9 @@ fn main() {
     //     ExprScope::bottom(map)
     // };
     let mut runtime = Runtime::new(&files, Default::default());
-    // println!("{runtime:#?}");
-    let res = runtime.load("test.mix");
+    let res = runtime.load("test2.mix");
+    println!("{runtime:#?}");
     println!("{res:#?}");
-    // let res = runtime.eval(res);
-    // println!("{res:#?}");
+    let res = runtime.eval_lazy(res);
+    println!("{res:#?}");
 }

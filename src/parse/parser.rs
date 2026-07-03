@@ -4,8 +4,8 @@ use crate::{
     lex::{LexError, Lexer, Token},
     parse::{
         Report,
-        ast::{BinOp, Node, UnOp},
-    },
+        ast::{BinOp, Node, Span, UnOp},
+    }, runtime::files::FileId,
 };
 
 use super::ast;
@@ -44,7 +44,7 @@ pub enum ParseError<'a> {
     UnexpectedTokenExpr(Token<'a>),
     UnexpectedTokenAttrPath(Token<'a>),
     FuncAppInList {
-        func: Range<usize>,
+        func: Span,
     },
     FuncDefInList,
     ExpectedEof(Token<'a>),
@@ -98,6 +98,7 @@ impl<'a> Token<'a> {
 }
 
 pub struct Parser<'a> {
+    fid: FileId,
     lex: Lexer<'a>,
     reports: Report<'a>,
     last: Node<Token<'a>>,
@@ -114,12 +115,13 @@ struct State<'a> {
 pub type ParserResult<'a> = Result<Node<ast::Expr<'a>>, Report<'a>>;
 
 impl<'a> Parser<'a> {
-    pub fn parse(str: &'a str) -> ParserResult<'a> {
+    pub fn parse(str: &'a str, fid: FileId) -> ParserResult<'a> {
         let mut parser = Self {
+            fid,
             lex: Lexer::new(str),
             reports: Default::default(),
-            curr: Node(Token::Eof, Default::default()),
-            last: Node(Token::Eof, Default::default()),
+            curr: Node(Token::Eof, Span::new(Default::default(), fid)),
+            last: Node(Token::Eof, Span::new(Default::default(), fid)),
         };
         _ = parser.next();
 
@@ -157,11 +159,12 @@ impl<'a> Parser<'a> {
         self.last = self.curr;
         loop {
             let (tok, range) = self.lex.next();
+            let span = Span::new(range, self.fid);
             match tok {
-                Err(e) => self.reports.push(Node(ParseError::Lex(e), range)),
+                Err(e) => self.reports.push(Node(ParseError::Lex(e), span)),
                 Ok(Token::Comment(_)) => {}
                 Ok(tok) => {
-                    self.curr = Node(tok, range);
+                    self.curr = Node(tok, span);
                     break;
                 }
             }
@@ -226,7 +229,7 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_pattern(&mut self) -> Node<ast::Pattern<'a>> {
-        let start = self.curr.1.start;
+        let start = self.curr.1;
 
         let binding = match self.curr.0 {
             Token::Ident(ident) => {
@@ -242,9 +245,9 @@ impl<'a> Parser<'a> {
             strict_destruct: false,
         };
 
-        let end = self.last.1.end;
+        let end = self.last.1;
 
-        Node(pattern, Range { start, end })
+        Node(pattern, start.merge(end))
     }
 
     fn parse_expr(&mut self) -> Node<ast::Expr<'a>> {
@@ -286,17 +289,14 @@ impl<'a> Parser<'a> {
                     ast::Associativity::Right => 0,
                 };
             let rhs = Box::new(self.parse_expr_binop(min_prec));
-            let range = Range {
-                start: lhs.1.start,
-                end: self.last.1.end,
-            };
+            let span = lhs.1.merge(self.last.1);
             lhs = Node(
                 ast::Expr::BinOp {
                     lhs: Box::new(lhs),
                     op,
                     rhs,
                 },
-                range,
+                span,
             );
         }
         lhs
@@ -313,10 +313,7 @@ impl<'a> Parser<'a> {
         let expr = self.parse_expr_unop();
         Node(
             expr.0,
-            Range {
-                start: op.1.start,
-                end: expr.1.end,
-            },
+            op.1.merge(expr.1)
         )
     }
 
@@ -326,11 +323,8 @@ impl<'a> Parser<'a> {
         while self.curr.0.starts_expr() {
             let func = Box::new(expr);
             let arg = Box::new(self.parse_expr_attr_path());
-            let range = Range {
-                start: func.1.start,
-                end: arg.1.end,
-            };
-            expr = Node(ast::Expr::FuncApp { func, arg }, range)
+            let span = func.1.merge(arg.1);
+            expr = Node(ast::Expr::FuncApp { func, arg }, span)
         }
 
         expr
@@ -354,17 +348,11 @@ impl<'a> Parser<'a> {
             let or = self
                 .consume_if(Token::Question)
                 .then(|| Box::new(self.parse_expr()));
-            let range = Range {
-                start: expr.1.start,
-                end: self.last.1.end,
-            };
-            Node(ast::Expr::AccessAttr { expr, path, or }, range)
+            let span = expr.1.merge(self.last.1);
+            Node(ast::Expr::AccessAttr { expr, path, or }, span)
         } else {
-            let range = Range {
-                start: expr.1.start,
-                end: self.last.1.end,
-            };
-            Node(ast::Expr::HasAttr { expr, path }, range)
+            let span = expr.1.merge(self.last.1);
+            Node(ast::Expr::HasAttr { expr, path }, span)
         }
     }
 
@@ -375,18 +363,15 @@ impl<'a> Parser<'a> {
             let arg = self.parse_pattern();
             if self.consume_if(Token::Colon) {
                 let body = Box::new(self.parse_expr());
-                let range = Range {
-                    start: arg.1.start,
-                    end: body.1.end,
-                };
+                let span = arg.1.merge(body.1);
                 let lambda = ast::Lambda { arg, body };
-                return Node(ast::Expr::Lambda(lambda), range);
+                return Node(ast::Expr::Lambda(lambda), span);
             } else {
                 self.restore(state);
             }
         }
 
-        let start = self.curr.1.start;
+        let start = self.curr.1;
         let expr = match self.next() {
             Token::LParen => {
                 let delim = Node(Delim::Paren, self.last.1);
@@ -442,6 +427,18 @@ impl<'a> Parser<'a> {
                 self.close_delim(delim);
                 ast::Expr::List { elements }
             }
+            Token::If => {
+                let cond = Box::new(self.parse_expr());
+                self.next(); // TODO
+                let then_expr = Box::new(self.parse_expr());
+                self.next(); // TODO
+                let else_expr = Box::new(self.parse_expr());
+                ast::Expr::IfThenElse { 
+                    cond, 
+                    then_expr, 
+                    else_expr 
+                }
+            }
             Token::Ident(ident) => ast::Expr::Ident(ident),
             Token::Num(num) => ast::Expr::Num(if num.contains('.') {
                 match num.parse() {
@@ -469,28 +466,25 @@ impl<'a> Parser<'a> {
                 ast::Expr::Ident("<ERROR>")
             }
         };
-        let end = self.last.1.end;
-        Node(expr, Range { start, end })
+        let end = self.last.1;
+        Node(expr, start.merge(end))
     }
 
     fn parse_attr(&mut self) -> Node<ast::Attr<'a>> {
         let path = self.parse_attr_path();
 
         let value = self.consume_if(Token::Assign).then(|| self.parse_expr());
-        let range = Range {
-            start: path.1.start,
-            end: self.last.1.end,
-        };
-        Node(ast::Attr { path, value }, range)
+        let span = path.1.merge(self.last.1);
+        Node(ast::Attr { path, value }, span)
     }
 
     fn parse_attr_path(&mut self) -> Node<ast::AttrPath<'a>> {
-        let start = self.curr.1.start;
+        let start = self.curr.1;
 
         let mut parts = vec![];
 
         loop {
-            let start = self.curr.1.start;
+            let start = self.curr.1;
             let part = match self.curr.0 {
                 Token::Ident(ident) => {
                     self.next();
@@ -507,21 +501,13 @@ impl<'a> Parser<'a> {
                 }
             };
 
-            let range = Range {
-                start,
-                end: self.last.1.end,
-            };
-            parts.push(Node(part, range));
+            parts.push(Node(part, start.merge(self.last.1)));
 
             if !self.consume_if(Token::Dot) {
                 break;
             }
         }
 
-        let range = Range {
-            start,
-            end: self.last.1.end,
-        };
-        Node(ast::AttrPath { parts }, range)
+        Node(ast::AttrPath { parts }, start.merge(self.last.1))
     }
 }

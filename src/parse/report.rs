@@ -30,7 +30,7 @@ impl<'a> Report<'a> {
     pub fn render(&self, path: &str, file: &str) -> Vec<String> {
         use annotate_snippets::*;
         let renderer = Renderer::styled().decor_style(renderer::DecorStyle::Unicode);
-        let render = |&Node(ref err, range)| {
+        let render = |&Node(ref err, span)| {
             let groups: &[Group<'_>] = match err {
                 ParseError::Lex(lex_error) => {
                     let title = match lex_error {
@@ -44,7 +44,7 @@ impl<'a> Report<'a> {
                     &[Level::ERROR.primary_title(title).element(
                         Snippet::source(file)
                             .path(path)
-                            .annotation(AnnotationKind::Primary.span(range.into())),
+                            .annotation(AnnotationKind::Primary.span(span.range.into())),
                     )]
                 }
                 ParseError::UnclosedDelim { opening, closing } => {
@@ -53,10 +53,10 @@ impl<'a> Report<'a> {
                         Level::ERROR.primary_title(title).element(
                             Snippet::source(file)
                                 .path(path)
-                                .annotation(AnnotationKind::Primary.span(closing.1.into()))
+                                .annotation(AnnotationKind::Primary.span(closing.1.range.into()))
                                 .annotation(
                                     AnnotationKind::Context
-                                        .span(opening.1.into())
+                                        .span(opening.1.range.into())
                                         .label("opened here"),
                                 ),
                         ),
@@ -64,7 +64,7 @@ impl<'a> Report<'a> {
                             .secondary_title("consider closing here")
                             .element(
                                 Snippet::source(file)
-                                    .patch(Patch::new(closing.1.into(), closing.0.closing())),
+                                    .patch(Patch::new(closing.1.range.into(), closing.0.closing())),
                             ),
                     ]
                 }
@@ -72,10 +72,10 @@ impl<'a> Report<'a> {
                     Level::ERROR.primary_title("mismatched delimiter").element(
                         Snippet::source(file)
                             .path(path)
-                            .annotation(AnnotationKind::Primary.span(closing.1.into()))
+                            .annotation(AnnotationKind::Primary.span(closing.1.range.into()))
                             .annotation(
                                 AnnotationKind::Context
-                                    .span(opening.1.into())
+                                    .span(opening.1.range.into())
                                     .label("opened here"),
                             ),
                     ),
@@ -83,7 +83,7 @@ impl<'a> Report<'a> {
                         .secondary_title("use correct delimiter")
                         .element(
                             Snippet::source(file)
-                                .patch(Patch::new(closing.1.into(), opening.0.closing())),
+                                .patch(Patch::new(closing.1.range.into(), opening.0.closing())),
                         ),
                 ],
                 ParseError::ExpectedClosingDelim(delim, token) => {
@@ -94,7 +94,7 @@ impl<'a> Report<'a> {
                     &[Level::ERROR.primary_title(title).element(
                         Snippet::source(file)
                             .path(path)
-                            .annotation(AnnotationKind::Primary.span(range.start..range.start)),
+                            .annotation(AnnotationKind::Primary.span(span.before().range.into())),
                     )]
                 }
                 ParseError::UnexpectedTokenExpr(token) => {
@@ -102,7 +102,7 @@ impl<'a> Report<'a> {
                     &[Level::ERROR.primary_title(title).element(
                         Snippet::source(file)
                             .path(path)
-                            .annotation(AnnotationKind::Primary.span(range.into())),
+                            .annotation(AnnotationKind::Primary.span(span.range.into())),
                     )]
                 }
                 ParseError::UnexpectedTokenAttrPath(token) => todo!(),
@@ -112,18 +112,18 @@ impl<'a> Report<'a> {
                         .element(
                             Snippet::source(file)
                                 .path(path)
-                                .annotation(AnnotationKind::Primary.span(range.into())),
+                                .annotation(AnnotationKind::Primary.span(span.range.into())),
                         ),
                     Level::HELP
                         .secondary_title("consider wrapping in parenthesis if intended")
                         .element(
                             Snippet::source(file)
-                                .patch(Patch::new(range.start..range.start, "("))
-                                .patch(Patch::new(range.end..range.end, ")")),
+                                .patch(Patch::new(span.before().range.into(), "("))
+                                .patch(Patch::new(span.after().range.into(), ")")),
                         ),
                     Level::HELP
                         .secondary_title("or add comma if not")
-                        .element(Snippet::source(file).patch(Patch::new(func.end..func.end, ","))),
+                        .element(Snippet::source(file).patch(Patch::new(func.after().range.into(), ","))),
                 ],
                 ParseError::FuncDefInList => &[
                     Level::ERROR
@@ -131,14 +131,14 @@ impl<'a> Report<'a> {
                         .element(
                             Snippet::source(file)
                                 .path(path)
-                                .annotation(AnnotationKind::Primary.span(range.into())),
+                                .annotation(AnnotationKind::Primary.span(span.range.into())),
                         ),
                     Level::HELP
                         .secondary_title("consider wrapping in parenthesis")
                         .element(
                             Snippet::source(file)
-                                .patch(Patch::new(range.start..range.start, "("))
-                                .patch(Patch::new(range.end..range.end, ")")),
+                                .patch(Patch::new(span.before().range.into(), "("))
+                                .patch(Patch::new(span.after().range.into(), ")")),
                         ),
                 ],
                 ParseError::ExpectedEof(token) => {
@@ -146,20 +146,20 @@ impl<'a> Report<'a> {
                     &[Level::ERROR.primary_title(title).element(
                         Snippet::source(file)
                             .path(path)
-                            .annotation(AnnotationKind::Primary.span(range.into())),
+                            .annotation(AnnotationKind::Primary.span(span.range.into())),
                     )]
                 }
                 ParseError::FloatErr(err) => {
                     &[Level::ERROR.primary_title(format!("{err}")).element(
                         Snippet::source(file)
                             .path(path)
-                            .annotation(AnnotationKind::Primary.span(range.into())),
+                            .annotation(AnnotationKind::Primary.span(span.range.into())),
                     )]
                 }
                 ParseError::IntErr(err) => &[Level::ERROR.primary_title(format!("{err}")).element(
                     Snippet::source(file)
                         .path(path)
-                        .annotation(AnnotationKind::Primary.span(range.into())),
+                        .annotation(AnnotationKind::Primary.span(span.range.into())),
                 )],
             };
             renderer.render(groups)

@@ -1,4 +1,4 @@
-use crate::bytecode::{ExprLoc, LambdaId, StrId};
+use crate::bytecode::{CodeLocOffset, ExprLoc, LambdaId, StrId};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum OpCode {
@@ -18,18 +18,17 @@ pub enum OpCode {
     Not,
     Neg,
 
-    And(ExprLoc),
-    Or(ExprLoc),
-    LogImp(ExprLoc),
+    And(CodeLocOffset),
+    Or(CodeLocOffset),
+    LogImp(CodeLocOffset),
 
-    If(ExprLoc, ExprLoc),
+    If(CodeLocOffset),
 
-    CreateAttrSet,
+    CreateAttrSet(usize),
     InitAttrExpr(ExprLoc),
-    InitAttrPath,
 
     CreateList(usize),
-    AppendList,
+    AppendList(ExprLoc),
 
     CreatePath,
     PushPathPart,
@@ -41,11 +40,14 @@ pub enum OpCode {
     LoadStr(StrId),
     LoadInt(i64),
     LoadFloat(f64),
+    LoadBool(bool),
     WithScope,
 
     HasAttr,
     GetAttr,
     GetAttrOr(ExprLoc),
+
+    Branch(CodeLocOffset),
 
     Ret,
 }

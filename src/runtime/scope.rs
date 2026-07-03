@@ -3,24 +3,20 @@ use dumpster::Trace;
 use crate::runtime::AttrSet;
 
 #[derive(Clone, Default, Debug, Trace)]
-pub struct Scope(AttrSet);
+pub struct Scope {
+    pub curr: AttrSet,
+    pub prev: Option<Box<Scope>>
+}
 
 impl Scope {
-    pub fn new_regular(prev: Option<Scope>) -> Self {
-        // let inner = ScopeInner{
-        //     prev,
-        //     scope: Default::default(),
-        // };
-        todo!()
-        // Self(Rc::new(inner))
+    pub fn new(curr: AttrSet, prev: Scope) -> Self {
+        Self { curr, prev: Some(Box::new(prev)) }
     }
 
-    // pub fn bottom(scope: HashMap<Cow<'a, str>, LazyExpr<'a>> ) -> Self{
-    //     let inner = ScopeInner{
-    //         prev: None,
-    //         scope
-    //     };
-    //     todo!()
-    //     // Self(Rc::new(inner))
-    // }
+    pub fn bottom(curr: AttrSet ) -> Self{
+        Scope {
+            curr,
+            prev: None,
+        }
+    }
 }
