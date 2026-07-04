@@ -70,9 +70,7 @@ pub enum Expr<'a> {
     Let {
         bindings: Vec<LetBinding<'a>>,
     },
-    AttrSet {
-        attrs: Vec<Node<Attr<'a>>>,
-    },
+    AttrSet(AttrSet<'a>),
     List {
         elements: Vec<Node<Expr<'a>>>,
     },
@@ -85,7 +83,6 @@ pub enum Expr<'a> {
         expr: Box<Node<Expr<'a>>>,
         path: Node<AttrPath<'a>>,
     },
-    Paren(Box<Node<Expr<'a>>>),
     Ident(&'a str),
     Num(Num),
     Str(&'a str),
@@ -97,6 +94,24 @@ pub struct LetBinding<'a> {
     pub value: Node<Expr<'a>>,
 }
 
+#[derive(Clone, Debug, Default)]
+pub struct AttrSet<'a> {
+    pub static_attrs: Vec<Node<StaticAttr<'a>>>,
+    pub dynamic_attrs: Vec<Node<DynamicAttr<'a>>>,
+}
+
+#[derive(Clone, Debug)]
+pub struct StaticAttr<'a> {
+    pub name: Node<&'a str>,
+    pub value: Option<Node<Expr<'a>>>,
+}
+
+#[derive(Clone, Debug)]
+pub struct DynamicAttr<'a> {
+    pub path: Node<AttrPath<'a>>,
+    pub value: Option<Node<Expr<'a>>>,
+}
+
 #[derive(Clone, Debug)]
 pub struct AttrPath<'a> {
     pub parts: Vec<Node<AttrPathPart<'a>>>,
@@ -106,10 +121,4 @@ pub struct AttrPath<'a> {
 pub enum AttrPathPart<'a> {
     Ident(&'a str),
     Expr(Expr<'a>),
-}
-
-#[derive(Clone, Debug)]
-pub struct Attr<'a> {
-    pub path: Node<AttrPathPart<'a>>,
-    pub value: Option<Node<Expr<'a>>>,
 }

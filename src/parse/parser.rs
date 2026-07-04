@@ -1,3 +1,5 @@
+use std::ops::Not;
+
 use crate::{
     files::{FileId, Node, Span},
     lex::{Lexer, Token},
@@ -93,7 +95,7 @@ struct State<'a> {
     curr: Node<Token<'a>>,
 }
 
-pub type ParserResult<'a> = Result<Node<ast::Expr<'a>>, Reports<'a>>;
+pub type ParserResult<'a> = (Result<Node<ast::Expr<'a>>, ()>, Reports<'a>);
 
 impl<'a> Parser<'a> {
     pub fn parse(str: &'a str, fid: FileId) -> ParserResult<'a> {
@@ -114,11 +116,7 @@ impl<'a> Parser<'a> {
             });
         }
 
-        if !parser.reports.has_errors() {
-            return Ok(expr);
-        }
-
-        Err(parser.reports)
+        (parser.reports.has_errors().not().then(||expr).ok_or(()), parser.reports)
     }
 
     fn state(&self) -> State<'a> {

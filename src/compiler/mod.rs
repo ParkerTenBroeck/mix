@@ -1,7 +1,7 @@
 use crate::{
     bytecode::{ByteCodeBuilder, CodeLoc, ExprBuilder, OpCode, ProgramBuilder},
     files::Node,
-    parse::ast,
+    mir::ast,
 };
 
 #[derive(Default)]
@@ -51,20 +51,6 @@ impl Compiler {
                     .emit_else(|builder| _ = self.compile_expr(builder, else_expr));
             }
             ast::Expr::BinOp {
-                lhs: func,
-                op: Node(ast::BinOp::PipeL, _),
-                rhs: arg,
-            }
-            | ast::Expr::BinOp {
-                lhs: arg,
-                op: Node(ast::BinOp::PipeR, _),
-                rhs: func,
-            } => {
-                self.compile_expr(builder, func)
-                    .emit_fn_app(arg.1, |builder| _ = self.compile_expr(builder, arg));
-            }
-
-            ast::Expr::BinOp {
                 lhs,
                 op: op @ Node(ast::BinOp::Or | ast::BinOp::And | ast::BinOp::LogImp, _),
                 rhs,
@@ -111,10 +97,21 @@ impl Compiler {
                 };
             }
             ast::Expr::Let { bindings } => todo!(),
-            ast::Expr::AttrSet { attrs } => {
+            ast::Expr::AttrSet(attrs) => {
                 builder.emit(OpCode::CreateAttrSet);
 
-                for attr in attrs {
+                for attr in &attrs.static_attrs {
+                    if let Some(value) = &attr.0.value {
+                        builder.emit_load_str(attr.0.name.0);
+                        let expr = builder
+                            .emit_expr(value.1, |builder| _ = self.compile_expr(builder, value));
+                        builder.emit(OpCode::InitAttrExpr(expr.1));
+                    } else {
+                        todo!()
+                    }
+                }
+
+                for attr in &attrs.dynamic_attrs {
                     if let Some(value) = &attr.0.value {
                         self.compile_attr_path(builder, &attr.0.path);
                         let expr = builder
@@ -143,7 +140,6 @@ impl Compiler {
                 // self.compile_expr_inline(bc, expr);
                 // bc.emit(OpCode::HasAttr);
             }
-            ast::Expr::Paren(node) => _ = self.compile_expr(builder, node),
             ast::Expr::Ident("true") => _ = builder.emit_load_bool(true),
             ast::Expr::Ident("false") => _ = builder.emit_load_bool(false),
             ast::Expr::Ident(ident) => _ = builder.emit_load_str(ident).emit(OpCode::LoadScope),
@@ -163,12 +159,8 @@ impl Compiler {
                     builder.emit_load_str(ident);
                     // _ = builder.emit_load_str(ident).emit(OpCode::PushPathPart)
                 }
-                ast::AttrPathPart::Str(str) => {
-                    builder.emit_load_str(str);
-                    // _ = builder.emit_load_str(str).emit(OpCode::PushPathPart)
-                }
-                ast::AttrPathPart::Expr(_) => {
-                    todo!()
+                ast::AttrPathPart::Expr(expr) => {
+                    _ = self.compile_expr(builder, &Node(expr.clone(), part.1));
                 }
             }
         }

@@ -6,7 +6,7 @@ use super::*;
 
 use crate::{
     files::{Node, Span},
-    parse::ast::{self},
+    mir::ast,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Trace)]

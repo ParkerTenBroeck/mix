@@ -5,7 +5,12 @@ mod value;
 pub use value::*;
 
 use crate::{
-    bytecode::{CodeLoc, Program}, files::{Files, Node, Span}, parse::{Parser, ast}, report::Reports, runtime::{eval::Evaluator, scope::Scope}
+    bytecode::Program,
+    files::Files,
+    mir::lowerer::MirLowerer,
+    parse::Parser,
+    report::Reports,
+    runtime::{eval::Evaluator, scope::Scope},
 };
 
 #[derive(Debug)]
@@ -27,7 +32,14 @@ impl<'a> Runtime<'a> {
     pub fn load(&mut self, path: &str) -> Result<LazyValue, Reports<'a>> {
         let (file, fid) = self.loader.load(path.as_ref()).unwrap();
 
-        let expr = Parser::parse(file, fid)?;
+        let (expr, reports) = Parser::parse(file, fid);
+        let Ok(expr) = expr else {
+            return Err(reports);
+        };
+        let (expr, reports) = MirLowerer::new(reports).lower(expr);
+        let Ok(expr) = expr else {
+            return Err(reports);
+        };
 
         let expr = self.program.compile(&expr);
         let expr = LazyValue::uneval(expr, self.default_scope.clone());
