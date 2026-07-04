@@ -1,4 +1,5 @@
 
+pub mod report;
 pub mod files;
 pub mod lex;
 pub mod parse;

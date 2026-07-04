@@ -1,4 +1,4 @@
-use crate::parse::ast::Span;
+use crate::files::Span;
 
 use super::*;
 
@@ -45,7 +45,7 @@ impl<'a> ByteCodeBuilder for ExprBuilder<'a> {
         self
     }
 
-    fn new(&mut self) -> ExprBuilder<'_> {
+    fn clone(&mut self) -> ExprBuilder<'_> {
         ExprBuilder {
             code: Default::default(),
             program: self.program,
@@ -83,7 +83,7 @@ pub trait ProgramBuilder {
 
 pub trait ByteCodeBuilder: ProgramBuilder {
     fn emit(&mut self, op: OpCode) -> &mut Self;
-    fn new(&mut self) -> ExprBuilder<'_>;
+    fn clone(&mut self) -> ExprBuilder<'_>;
 
     fn emit_add(&mut self) -> &mut Self {
         self.emit(OpCode::Add)
@@ -128,7 +128,7 @@ pub trait ByteCodeBuilder: ProgramBuilder {
     }
 
     fn emit_and(&mut self, second_expr: impl FnOnce(&mut ExprBuilder)) -> &mut Self {
-        let mut second_code = self.new();
+        let mut second_code = self.clone();
         second_expr(&mut second_code);
         let second_code = second_code.finish();
 
@@ -141,7 +141,7 @@ pub trait ByteCodeBuilder: ProgramBuilder {
         self
     }
     fn emit_or(&mut self, second_expr: impl FnOnce(&mut ExprBuilder)) -> &mut Self {
-        let mut second_code = self.new();
+        let mut second_code = self.clone();
         second_expr(&mut second_code);
         let second_code = second_code.finish();
 
@@ -154,7 +154,7 @@ pub trait ByteCodeBuilder: ProgramBuilder {
         self
     }
     fn emit_log_imp(&mut self, second_expr: impl FnOnce(&mut ExprBuilder)) -> &mut Self {
-        let mut second_code = self.new();
+        let mut second_code = self.clone();
         second_expr(&mut second_code);
         let second_code = second_code.finish();
 
@@ -168,7 +168,7 @@ pub trait ByteCodeBuilder: ProgramBuilder {
     }
 
     fn emit_if_then(&mut self, then_expr: impl FnOnce(&mut ExprBuilder)) -> ThenBuilder<'_, Self> {
-        let mut then_builder = self.new();
+        let mut then_builder = self.clone();
         then_expr(&mut then_builder);
         ThenBuilder {
             code: then_builder.finish(),
@@ -212,7 +212,7 @@ pub struct ThenBuilder<'a, T: ByteCodeBuilder + ?Sized> {
 
 impl<'a, T: ByteCodeBuilder + ?Sized> ThenBuilder<'a, T> {
     pub fn emit_else(self, else_expr: impl FnOnce(&mut ExprBuilder)) -> &'a mut T {
-        let mut else_builder = self.builder.new();
+        let mut else_builder = self.builder.clone();
         else_expr(&mut else_builder);
         let mut then_code = self.code;
         let else_code = else_builder.finish();

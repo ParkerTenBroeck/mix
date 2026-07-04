@@ -4,7 +4,7 @@ use dumpster::Trace;
 
 use super::*;
 
-use crate::parse::ast::{self, Span};
+use crate::{files::{Node, Span}, parse::ast::{self}};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Trace)]
 pub struct CodeLoc(usize);
@@ -52,7 +52,7 @@ pub struct Program {
 }
 
 impl Program {
-    pub fn compile(&mut self, expr: &ast::Node<ast::Expr>) -> CodeLoc {
+    pub fn compile(&mut self, expr: &Node<ast::Expr>) -> CodeLoc {
         let mut compiler = crate::compiler::Compiler::new();
         compiler.compile_top_level(self, expr)
     }

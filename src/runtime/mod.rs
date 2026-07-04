@@ -5,9 +5,9 @@ mod value;
 pub use value::*;
 
 use crate::{
-    bytecode::{CodeLoc, Program}, files::Files, parse::{
+    bytecode::{CodeLoc, Program}, files::{Files, Node, Span}, parse::{
         Parser,
-        ast::{self, Span},
+        ast,
     }, runtime::{eval::Evaluator, scope::Scope}
 };
 
@@ -39,7 +39,7 @@ impl<'a> Runtime<'a> {
                     println!("{err}")
                 }
 
-                ast::Node(ast::Expr::Ident("null"), Span::new(range.into(), fid))
+                Node(ast::Expr::Ident("null"), Span::new(range.into(), fid))
             }
         };
 

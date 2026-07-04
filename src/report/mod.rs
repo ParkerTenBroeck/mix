@@ -1,6 +1,5 @@
 use crate::{
-    lex::LexError,
-    parse::{ParseError, ast::Node},
+    files::Node, lex::LexError, parse::ParseError
 };
 
 #[derive(Clone, Debug, Default)]
@@ -35,10 +34,10 @@ impl<'a> Report<'a> {
                 ParseError::Lex(lex_error) => {
                     let title = match lex_error {
                         LexError::UnexpectedChar(char) => format!("unexpected char {char:?}"),
-                        LexError::UnclosedComment => format!("unclosed comment"),
-                        LexError::UnclosedString => format!("unclosed string literal"),
+                        LexError::UnclosedComment => "unclosed comment".to_string(),
+                        LexError::UnclosedString => "unclosed string literal".to_string(),
                         LexError::NumberError => {
-                            format!("number cannot contain more than one decimal")
+                            "number cannot contain more than one decimal".to_string()
                         }
                     };
                     &[Level::ERROR.primary_title(title).element(

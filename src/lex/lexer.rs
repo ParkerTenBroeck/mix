@@ -45,11 +45,11 @@ impl<'a> Lexer<'a> {
         let mut dot_err = false;
         loop {
             match self.peek_char() {
-                Some('0'..='9' | '_') => _ = self.next(),
+                Some('0'..='9' | '_') => _ = self.next_tok(),
                 Some('.') => {
                     dot_err = has_dot;
                     has_dot = true;
-                    _ = self.next();
+                    _ = self.next_tok();
                 }
                 _ => break,
             }
@@ -61,7 +61,7 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    pub fn next(&mut self) -> Node<Result<Token<'a>, LexError>> {
+    pub fn next_tok(&mut self) -> Node<Result<Token<'a>, LexError>> {
         self.pos += if let Some(str) = self.str.get(self.pos..) {
             str.len() - str.trim_start().len()
         } else {

@@ -1,10 +1,5 @@
 use crate::{
-    lex::{LexError, Lexer, Token},
-    parse::{
-        Report,
-        ast::{BinOp, Node, Span, UnOp},
-    },
-    files::FileId,
+    files::{FileId, Node, Span}, lex::{LexError, Lexer, Token}, parse::ast::{BinOp, UnOp}, report::Report
 };
 
 use super::ast;
@@ -157,7 +152,7 @@ impl<'a> Parser<'a> {
     fn next(&mut self) -> Token<'a> {
         self.last = self.curr;
         loop {
-            let (tok, range) = self.lex.next();
+            let (tok, range) = self.lex.next_tok();
             let span = Span::new(range, self.fid);
             match tok {
                 Err(e) => self.reports.push(Node(ParseError::Lex(e), span)),
@@ -425,9 +420,13 @@ impl<'a> Parser<'a> {
             }
             Token::If => {
                 let cond = Box::new(self.parse_expr());
-                self.next(); // TODO
+                if !self.consume_if(Token::Then){
+                    todo!()
+                }
                 let then_expr = Box::new(self.parse_expr());
-                self.next(); // TODO
+                if !self.consume_if(Token::Else){
+                    todo!()
+                }
                 let else_expr = Box::new(self.parse_expr());
                 ast::Expr::IfThenElse {
                     cond,

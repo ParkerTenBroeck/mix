@@ -1,6 +1,5 @@
 use crate::{
-    bytecode::{ByteCodeBuilder, CodeLoc, ExprBuilder, OpCode, ProgramBuilder},
-    parse::ast,
+    bytecode::{ByteCodeBuilder, CodeLoc, ExprBuilder, OpCode, ProgramBuilder}, files::Node, parse::ast
 };
 
 #[derive(Default)]
@@ -14,7 +13,7 @@ impl Compiler {
     pub fn compile_top_level(
         &mut self,
         mut builder: impl ProgramBuilder,
-        expr: &ast::Node<ast::Expr>,
+        expr: &Node<ast::Expr>,
     ) -> CodeLoc {
         let (_, loc) = builder.emit_expr(expr.1, |eb| {
             self.compile_expr(eb, expr);
@@ -25,9 +24,9 @@ impl Compiler {
     fn compile_expr<'a, 'b>(
         &mut self,
         builder: &'b mut ExprBuilder<'a>,
-        expr: &ast::Node<ast::Expr>,
+        expr: &Node<ast::Expr>,
     ) -> &'b mut ExprBuilder<'a> {
-        let ast::Node(ast_expr, loc) = expr;
+        let Node(ast_expr, loc) = expr;
 
         match ast_expr {
             ast::Expr::Lambda(lambda) => {
@@ -51,12 +50,12 @@ impl Compiler {
             }
             ast::Expr::BinOp {
                 lhs: func,
-                op: ast::Node(ast::BinOp::PipeL, _),
+                op: Node(ast::BinOp::PipeL, _),
                 rhs: arg,
             }
             | ast::Expr::BinOp {
                 lhs: arg,
-                op: ast::Node(ast::BinOp::PipeR, _),
+                op: Node(ast::BinOp::PipeR, _),
                 rhs: func,
             } => {
                 self.compile_expr(builder, func)
@@ -65,7 +64,7 @@ impl Compiler {
 
             ast::Expr::BinOp {
                 lhs,
-                op: op @ ast::Node(ast::BinOp::Or | ast::BinOp::And | ast::BinOp::LogImp, _),
+                op: op @ Node(ast::BinOp::Or | ast::BinOp::And | ast::BinOp::LogImp, _),
                 rhs,
             } => {
                 self.compile_expr(builder, lhs);
@@ -154,7 +153,7 @@ impl Compiler {
         builder
     }
 
-    fn compile_attr_path(&mut self, builder: &mut ExprBuilder, path: &ast::Node<ast::AttrPath>) {
+    fn compile_attr_path(&mut self, builder: &mut ExprBuilder, path: &Node<ast::AttrPath>) {
         // builder.emit(OpCode::CreatePath);
         for part in &path.0.parts {
             match &part.0 {
