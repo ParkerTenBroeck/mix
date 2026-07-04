@@ -1,5 +1,5 @@
 use crate::{
-    bytecode::{ByteCodeBuilder, CodeLoc, ExprBuilder, OpCode, ProgramBuilder},
+    bytecode::{ByteCodeBuilder, CodePos, ExprBuilder, OpCode, ProgramBuilder},
     files::Node,
     mir::ast,
 };
@@ -16,7 +16,7 @@ impl Compiler {
         &mut self,
         mut builder: impl ProgramBuilder,
         expr: &Node<ast::Expr>,
-    ) -> CodeLoc {
+    ) -> CodePos {
         let (_, loc) = builder.emit_expr(expr.1, |eb| {
             self.compile_expr(eb, expr);
         });
@@ -32,7 +32,7 @@ impl Compiler {
 
         match ast_expr {
             ast::Expr::Lambda(lambda) => {
-                builder.emit_load_lambda(*span, |builder|{
+                builder.emit_load_lambda(*span, |builder| {
                     //TODO how do I want to do argument stuff?
                     self.compile_expr(builder, &lambda.body);
                 });
@@ -132,11 +132,13 @@ impl Compiler {
                 }
             }
             ast::Expr::AccessAttr { expr, path, or } => {
-                
+                self.compile_expr(builder, expr);
+                for part in &path.0.parts{
+                    self.compile_attr_part(builder, part);
+                    builder.emit(OpCode::GetAttr);
+                }
             }
-            ast::Expr::HasAttr { expr, path } => {
-                
-            }
+            ast::Expr::HasAttr { expr, path } => {}
             ast::Expr::Ident("true") => _ = builder.emit_load_bool(true),
             ast::Expr::Ident("false") => _ = builder.emit_load_bool(false),
             ast::Expr::Ident(ident) => _ = builder.emit_load_str(ident).emit(OpCode::LoadScope),

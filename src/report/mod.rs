@@ -139,7 +139,10 @@ impl<'a> Reports<'a> {
     }
 
     pub fn render(&self, files: &Files) -> Vec<String> {
-        self.reports.iter().map(|report| report.render(files)).collect()
+        self.reports
+            .iter()
+            .map(|report| report.render(files))
+            .collect()
     }
 }
 
@@ -202,10 +205,8 @@ impl<'a> Report<'a> {
         self.helps
             .iter()
             .flat_map(|help| {
-                self.group_patches(help)
-                    .into_iter()
-                    .enumerate()
-                    .map(move |(index, file_patches)| {
+                self.group_patches(help).into_iter().enumerate().map(
+                    move |(index, file_patches)| {
                         let (path, source) = files.file(file_patches.fid);
                         let snippet = Snippet::source(source)
                             .path(path.display().to_string())
@@ -220,7 +221,8 @@ impl<'a> Report<'a> {
                         } else {
                             Group::with_level(Level::HELP).element(snippet)
                         }
-                    })
+                    },
+                )
             })
             .collect()
     }

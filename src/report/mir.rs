@@ -1,6 +1,9 @@
 use std::borrow::Cow;
 
-use crate::{files::Span, report::{Report, ReportAnnotation, ReportLevel}};
+use crate::{
+    files::Span,
+    report::{Report, ReportAnnotation, ReportLevel},
+};
 
 #[derive(Clone, Debug)]
 pub struct DuplicateAttrError<'a> {

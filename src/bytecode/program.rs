@@ -10,20 +10,25 @@ use crate::{
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Trace)]
-pub struct CodeLoc(usize);
+pub struct CodePos(usize);
+impl CodePos {
+    pub(crate) fn default() -> CodePos {
+        CodePos(0)
+    }
+}
 
-impl std::ops::Add<CodeLocOffset> for CodeLoc {
-    type Output = CodeLoc;
+impl std::ops::Add<CodeLocOffset> for CodePos {
+    type Output = CodePos;
 
     fn add(self, rhs: CodeLocOffset) -> Self::Output {
-        CodeLoc(self.0 + rhs.0)
+        CodePos(self.0 + rhs.0)
     }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct CodeLocOffset(pub(super) usize);
 
-pub type ExprLoc = CodeLoc;
+pub type ExprLoc = CodePos;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct StrId(NonZeroUsize);
@@ -36,13 +41,13 @@ pub struct ExprId(NonZeroUsize);
 
 #[derive(Debug)]
 pub struct Lambda {
-    pub code: CodeLoc,
+    pub code: CodePos,
     pub span: Span,
 }
 
 #[derive(Debug)]
 pub struct Expr {
-    pub code: CodeLoc,
+    pub code: CodePos,
     pub span: Span,
 }
 
@@ -55,13 +60,13 @@ pub struct Program {
 }
 
 impl Program {
-    pub fn compile(&mut self, expr: &Node<ast::Expr>) -> CodeLoc {
+    pub fn compile(&mut self, expr: &Node<ast::Expr>) -> CodePos {
         let mut compiler = crate::compiler::Compiler::new();
         compiler.compile_top_level(self, expr)
     }
 
-    pub fn get(&self, loc: CodeLoc) -> (OpCode, CodeLoc) {
-        (self.code[loc.0], CodeLoc(loc.0 + 1))
+    pub fn get(&self, loc: CodePos) -> (OpCode, CodePos) {
+        (self.code[loc.0], CodePos(loc.0 + 1))
     }
 
     pub fn get_str(&self, str: StrId) -> &str {
@@ -75,14 +80,14 @@ impl ProgramBuilder for Program {
         StrId(NonZeroUsize::new(self.strings.len()).unwrap())
     }
 
-    fn emit_expr(&mut self, span: Span, expr: impl FnOnce(&mut ExprBuilder)) -> (ExprId, CodeLoc) {
+    fn emit_expr(&mut self, span: Span, expr: impl FnOnce(&mut ExprBuilder)) -> (ExprId, CodePos) {
         let mut builder = ExprBuilder::new(self);
         expr(&mut builder);
         builder.emit(OpCode::Ret);
 
         let built_code = builder.finish();
 
-        let code = CodeLoc(self.code.len());
+        let code = CodePos(self.code.len());
         self.expressions.push(Expr { code, span });
         let expr_id = ExprId(NonZeroUsize::new(self.expressions.len()).unwrap());
 
@@ -97,9 +102,12 @@ impl ProgramBuilder for Program {
         &mut self,
         span: Span,
         expr: impl FnOnce(&mut ExprBuilder),
-    ) -> (LambdaId, CodeLoc) {
+    ) -> (LambdaId, CodePos) {
         let (_, code) = self.emit_expr(span, expr);
         self.lambdas.push(Lambda { code, span });
-        (LambdaId(NonZeroUsize::new(self.lambdas.len()).unwrap()), code)
+        (
+            LambdaId(NonZeroUsize::new(self.lambdas.len()).unwrap()),
+            code,
+        )
     }
 }

@@ -46,29 +46,11 @@ impl<'a> Runtime<'a> {
         Ok(expr)
     }
 
-    pub fn eval_lazy(&mut self, expr: LazyValue) -> Value {
-        match expr {
-            LazyValue::Unevaluated(state) => {
-                let mut state = state.borrow_mut();
-                match &*state {
-                    LazyExprState::Unevaluated(code_loc, scope) => {
-                        let res = Evaluator::new(self, *code_loc, scope.clone()).eval();
-                        *state = LazyExprState::Evaluated(res.clone());
-                        res
-                    }
-                    LazyExprState::Evaluating => todo!(),
-                    LazyExprState::Evaluated(value) => value.clone(),
-                    LazyExprState::Constructing(code_loc) => todo!(),
-                }
-            }
-            LazyValue::Evaluated(value) => value,
-        }
+    pub fn eval(&mut self, lazy: LazyValue) -> Value {
+        Evaluator::eval(self, lazy, false).unwrap()
     }
 
-    pub fn deep_eval(&mut self, value: Value) -> Value {
-        todo!();
-        // let value = self.eval(value);
-
-        value
+    pub fn deep_eval(&mut self, lazy: LazyValue) -> Value {
+        Evaluator::eval(self, lazy, true).unwrap()
     }
 }

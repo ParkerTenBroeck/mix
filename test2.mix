@@ -5,6 +5,11 @@ if true then
     list = [ (func: 12), (func 12) ],
     meow.beep = "nya",
     meow.bop = "nya",
+    wow = {
+        y = x+1,
+        z = y+2,
+        x = 1,
+    },
     inc = x:x+1,
     value = 12.2,
 }

@@ -19,16 +19,21 @@ impl Scope {
     pub fn bottom(curr: AttrSet) -> Self {
         Scope { curr, prev: None }
     }
-}
 
+    pub fn resolve(&self, name: &str) -> Option<&LazyValue> {
+        self.curr
+            .get(name)
+            .or_else(|| self.prev.as_ref().and_then(|prev| prev.resolve(name)))
+    }
+}
 
 #[derive(Debug, Default)]
-pub struct ScopeBuilder{
-    scope: AttrSet
+pub struct ScopeBuilder {
+    scope: AttrSet,
 }
 
-impl ScopeBuilder{
-    pub fn new() -> Self{
+impl ScopeBuilder {
+    pub fn new() -> Self {
         Default::default()
     }
 
@@ -37,7 +42,7 @@ impl ScopeBuilder{
         self
     }
 
-    pub fn build(self) -> Scope{
+    pub fn build(self) -> Scope {
         Scope::bottom(self.scope)
     }
 }

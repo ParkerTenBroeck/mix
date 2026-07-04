@@ -8,7 +8,7 @@ use std::{
 use dumpster::{Trace, unsync::Gc};
 
 use crate::{
-    bytecode::{CodeLoc, LambdaId},
+    bytecode::{CodePos, LambdaId},
     runtime::scope::Scope,
 };
 
@@ -80,7 +80,7 @@ pub enum LazyValue {
     Evaluated(Value),
 }
 
-impl<T: Into<Value>> From<T> for LazyValue{
+impl<T: Into<Value>> From<T> for LazyValue {
     fn from(value: T) -> Self {
         Self::Evaluated(value.into())
     }
@@ -102,7 +102,7 @@ impl std::fmt::Debug for LazyValue {
 }
 
 impl LazyValue {
-    pub fn construct_begin(code: CodeLoc) -> Self {
+    pub fn construct_begin(code: CodePos) -> Self {
         Self::Unevaluated(Gc::new(RefCell::new(LazyExprState::Constructing(code))))
     }
 
@@ -122,7 +122,7 @@ impl LazyValue {
         }
     }
 
-    pub fn uneval(code: CodeLoc, scope: Scope) -> Self {
+    pub fn uneval(code: CodePos, scope: Scope) -> Self {
         Self::Unevaluated(Gc::new(RefCell::new(LazyExprState::Unevaluated(
             code, scope,
         ))))
@@ -131,8 +131,8 @@ impl LazyValue {
 
 #[derive(Clone, Trace)]
 pub enum LazyExprState {
-    Constructing(CodeLoc),
-    Unevaluated(CodeLoc, Scope),
+    Constructing(CodePos),
+    Unevaluated(CodePos, Scope),
     Evaluating,
     Evaluated(Value),
 }
@@ -183,7 +183,7 @@ impl AttrSet {
         Gc::make_mut(&mut self.inner)
     }
 
-    pub fn new() -> Self{
+    pub fn new() -> Self {
         Self::default()
     }
 

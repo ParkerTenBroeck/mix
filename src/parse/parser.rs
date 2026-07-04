@@ -116,7 +116,10 @@ impl<'a> Parser<'a> {
             });
         }
 
-        (parser.reports.has_errors().not().then_some(expr).ok_or(()), parser.reports)
+        (
+            parser.reports.has_errors().not().then_some(expr).ok_or(()),
+            parser.reports,
+        )
     }
 
     fn state(&self) -> State<'a> {

@@ -1,4 +1,7 @@
-use mix::{files::Files, runtime::{Runtime, Value, scope::ScopeBuilder}};
+use mix::{
+    files::Files,
+    runtime::{Runtime, Value, scope::ScopeBuilder},
+};
 
 fn main() {
     let files = Files::new(|path| match std::fs::read_to_string(path) {
@@ -11,19 +14,19 @@ fn main() {
         .with("false", false)
         .with("true", true)
         .build();
-    
+
     let mut runtime = Runtime::new(&files, scope);
-    let res = match runtime.load("test2.mix"){
+    let res = match runtime.load("test2.mix") {
         Ok(ok) => ok,
         Err(reports) => {
-            for report in reports.render(&files){
+            for report in reports.render(&files) {
                 println!("{report}")
             }
             return;
-        },
+        }
     };
     println!("{runtime:#?}");
     println!("{res:#?}");
-    let res = runtime.eval_lazy(res);
+    let res = runtime.eval(res);
     println!("{res:#?}");
 }

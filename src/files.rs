@@ -67,7 +67,7 @@ impl std::fmt::Debug for Files {
 struct Inner {
     func: Box<Func>,
     loaded: HashMap<PathBuf, Storage>,
-    fid_mapping: Vec<PathBuf>
+    fid_mapping: Vec<PathBuf>,
 }
 
 impl Files {
@@ -86,7 +86,9 @@ impl Files {
             let fid = FileId(myself.fid_mapping.len() as u32);
             let result = (myself.func)(path);
             myself.fid_mapping.push(path.to_path_buf());
-            myself.loaded.insert(path.to_path_buf(), result.map(|cow|(cow, fid)));
+            myself
+                .loaded
+                .insert(path.to_path_buf(), result.map(|cow| (cow, fid)));
         }
 
         match &myself.loaded[path] {

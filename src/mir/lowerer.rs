@@ -3,8 +3,8 @@ use std::borrow::Cow;
 use crate::{
     files::{Node, Span},
     mir::ast::{
-        self, AttrPathPart, AttrSet, DynamicAttr, Expr, Lambda, LetBinding, Num,
-        Pattern, StaticAttr,
+        self, AttrPathPart, AttrSet, DynamicAttr, Expr, Lambda, LetBinding, Num, Pattern,
+        StaticAttr,
     },
     parse,
     report::{Reports, mir::DuplicateAttrError},
@@ -32,13 +32,13 @@ impl<'a> MirLowerer<'a> {
     pub fn lower(mut self, expr: Node<parse::ast::Expr<'a>>) -> MirLowerResult<'a> {
         let expr = self.lower_expr(expr);
         let reports = self.reports;
-        (reports.has_errors().not().then_some(expr).ok_or(()), reports)
+        (
+            reports.has_errors().not().then_some(expr).ok_or(()),
+            reports,
+        )
     }
 
-    fn lower_expr(
-        &mut self,
-        Node(expr, span): Node<parse::ast::Expr<'a>>,
-    ) -> Node<ast::Expr<'a>> {
+    fn lower_expr(&mut self, Node(expr, span): Node<parse::ast::Expr<'a>>) -> Node<ast::Expr<'a>> {
         let expr = match expr {
             parse::ast::Expr::Lambda(lambda) => ast::Expr::Lambda(Lambda {
                 arg: self.lower_pattern(lambda.arg),
@@ -99,7 +99,10 @@ impl<'a> MirLowerer<'a> {
         Node(expr, span)
     }
 
-    fn lower_pattern(&mut self, Node(pattern, span): Node<parse::ast::Pattern<'a>>) -> Node<Pattern<'a>> {
+    fn lower_pattern(
+        &mut self,
+        Node(pattern, span): Node<parse::ast::Pattern<'a>>,
+    ) -> Node<Pattern<'a>> {
         Node(
             Pattern {
                 binding: pattern.binding,
@@ -134,10 +137,7 @@ impl<'a> MirLowerer<'a> {
         }
     }
 
-    fn lower_attr_set(
-        &mut self,
-        attrs: Vec<Node<parse::ast::Attr<'a>>>,
-    ) -> AttrSet<'a> {
+    fn lower_attr_set(&mut self, attrs: Vec<Node<parse::ast::Attr<'a>>>) -> AttrSet<'a> {
         let mut static_attrs = Vec::new();
         let mut dynamic_attrs = Vec::new();
 
@@ -323,10 +323,7 @@ impl<'a> MirLowerer<'a> {
         Node(DynamicAttr { part, value }, span)
     }
 
-    fn lower_attr_path(
-        &mut self,
-        path: Node<parse::ast::AttrPath<'a>>,
-    ) -> Node<ast::AttrPath<'a>> {
+    fn lower_attr_path(&mut self, path: Node<parse::ast::AttrPath<'a>>) -> Node<ast::AttrPath<'a>> {
         let span = path.1;
         Node(
             ast::AttrPath {

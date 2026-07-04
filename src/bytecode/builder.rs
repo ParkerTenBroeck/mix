@@ -26,7 +26,7 @@ impl<'a> ProgramBuilder for ExprBuilder<'a> {
         self.program.emit_str(str)
     }
 
-    fn emit_expr(&mut self, span: Span, expr: impl FnOnce(&mut ExprBuilder)) -> (ExprId, CodeLoc) {
+    fn emit_expr(&mut self, span: Span, expr: impl FnOnce(&mut ExprBuilder)) -> (ExprId, CodePos) {
         self.program.emit_expr(span, expr)
     }
 
@@ -34,7 +34,7 @@ impl<'a> ProgramBuilder for ExprBuilder<'a> {
         &mut self,
         span: Span,
         expr: impl FnOnce(&mut ExprBuilder),
-    ) -> (LambdaId, CodeLoc) {
+    ) -> (LambdaId, CodePos) {
         self.program.emit_lambda(span, expr)
     }
 }
@@ -58,7 +58,7 @@ impl<T: ProgramBuilder> ProgramBuilder for &mut T {
         (*self).emit_str(str)
     }
 
-    fn emit_expr(&mut self, span: Span, expr: impl FnOnce(&mut ExprBuilder)) -> (ExprId, CodeLoc) {
+    fn emit_expr(&mut self, span: Span, expr: impl FnOnce(&mut ExprBuilder)) -> (ExprId, CodePos) {
         (*self).emit_expr(span, expr)
     }
 
@@ -66,19 +66,19 @@ impl<T: ProgramBuilder> ProgramBuilder for &mut T {
         &mut self,
         span: Span,
         expr: impl FnOnce(&mut ExprBuilder),
-    ) -> (LambdaId, CodeLoc) {
+    ) -> (LambdaId, CodePos) {
         (*self).emit_lambda(span, expr)
     }
 }
 
 pub trait ProgramBuilder {
     fn emit_str(&mut self, str: &str) -> StrId;
-    fn emit_expr(&mut self, span: Span, expr: impl FnOnce(&mut ExprBuilder)) -> (ExprId, CodeLoc);
+    fn emit_expr(&mut self, span: Span, expr: impl FnOnce(&mut ExprBuilder)) -> (ExprId, CodePos);
     fn emit_lambda(
         &mut self,
         span: Span,
         expr: impl FnOnce(&mut ExprBuilder),
-    ) -> (LambdaId, CodeLoc);
+    ) -> (LambdaId, CodePos);
 }
 
 pub trait ByteCodeBuilder: ProgramBuilder {
@@ -202,7 +202,11 @@ pub trait ByteCodeBuilder: ProgramBuilder {
     fn emit_load_bool(&mut self, bool: bool) -> &mut Self {
         self.emit(OpCode::LoadBool(bool))
     }
-    fn emit_load_lambda(&mut self, span: Span, body: impl FnMut(&mut ExprBuilder<'_>)) -> &mut Self {
+    fn emit_load_lambda(
+        &mut self,
+        span: Span,
+        body: impl FnMut(&mut ExprBuilder<'_>),
+    ) -> &mut Self {
         let lambda = self.emit_lambda(span, body).0;
         self.emit(OpCode::LoadLambda(lambda))
     }
