@@ -105,12 +105,11 @@ pub struct AttrPath<'a> {
 #[derive(Clone, Debug)]
 pub enum AttrPathPart<'a> {
     Ident(&'a str),
-    Str(&'a str),
     Expr(Expr<'a>),
 }
 
 #[derive(Clone, Debug)]
 pub struct Attr<'a> {
-    pub path: Node<AttrPath<'a>>,
+    pub path: Node<AttrPathPart<'a>>,
     pub value: Option<Node<Expr<'a>>>,
 }

@@ -26,7 +26,8 @@ pub enum OpCode {
 
     CreateAttrSet,
     InitAttrExpr(ExprLoc),
-    FinalizeAttrSet(bool),
+    FinalizeAttrSetRec,
+    FinalizeAttrSet,
 
     CreateList(usize),
     AppendList(ExprLoc),
@@ -39,6 +40,7 @@ pub enum OpCode {
     LoadFloat(f64),
     LoadBool(bool),
 
+    LoadScope,
     WithScope,
     LastScope,
 

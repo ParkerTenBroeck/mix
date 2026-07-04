@@ -207,18 +207,19 @@ impl<'a, 'b> Evaluator<'a, 'b> {
                         .insert(name, LazyValue::construct_begin(expr));
                     self.push_value(Value::AttrSet(attrset))?;
                 }
-                OpCode::FinalizeAttrSet(recursive) => {
+                op@(OpCode::FinalizeAttrSetRec|OpCode::FinalizeAttrSet) => {
                     let Value::AttrSet(attrset) = self.pop_value()? else {
                         todo!()
                     };
-                    let scope = if recursive {
+                    let scope = if op == OpCode::FinalizeAttrSetRec {
                         Scope::new(attrset.clone(), self.scope.clone())
                     } else {
                         self.scope.clone()
                     };
 
                     for element in attrset.values() {
-                        element.construct_end(scope.clone());
+                        // ignore result as some values might have already been finalized (inherited from elsewhere)
+                        _ = element.construct_end(scope.clone());
                     }
                     self.push_value(Value::AttrSet(attrset))?;
                 }
@@ -267,6 +268,7 @@ impl<'a, 'b> Evaluator<'a, 'b> {
                 OpCode::HasAttr => todo!(),
                 OpCode::GetAttr => todo!(),
                 OpCode::GetAttrOr(expr_id) => todo!(),
+                OpCode::LoadScope => todo!(),
 
                 OpCode::Ret if self.call_stack.is_empty() => break self.pop_value(),
                 OpCode::Ret => {

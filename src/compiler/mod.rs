@@ -124,7 +124,7 @@ impl Compiler {
                         todo!()
                     }
                 }
-                builder.emit(OpCode::FinalizeAttrSet(true));
+                builder.emit(OpCode::FinalizeAttrSetRec);
             }
             ast::Expr::List { elements } => {
                 builder.emit_create_list(elements.len());
@@ -146,7 +146,7 @@ impl Compiler {
             ast::Expr::Paren(node) => _ = self.compile_expr(builder, node),
             ast::Expr::Ident("true") => _ = builder.emit_load_bool(true),
             ast::Expr::Ident("false") => _ = builder.emit_load_bool(false),
-            ast::Expr::Ident(ident) => _ = builder.emit_load_str(ident).emit(OpCode::WithScope),
+            ast::Expr::Ident(ident) => _ = builder.emit_load_str(ident).emit(OpCode::LoadScope),
             ast::Expr::Num(ast::Num::Float(float)) => _ = builder.emit_load_float(*float),
             ast::Expr::Num(ast::Num::Int(int)) => _ = builder.emit_load_int(*int),
             ast::Expr::Str(str) => _ = builder.emit_load_str(str),
