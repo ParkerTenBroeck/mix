@@ -46,7 +46,7 @@ impl Span {
 pub struct Node<T>(pub T, pub Span);
 
 type Error<'a> = Cow<'a, str>;
-type Storage = (Result<Cow<'static, str>, Error<'static>>, FileId);
+type Storage = Result<(Cow<'static, str>, FileId), Error<'static>>;
 type LoaderResult = Result<Cow<'static, str>, Error<'static>>;
 type Func = dyn FnMut(&Path) -> LoaderResult;
 type Return<'a> = Result<(&'a str, FileId), Error<'a>>;
@@ -67,6 +67,7 @@ impl std::fmt::Debug for Files {
 struct Inner {
     func: Box<Func>,
     loaded: HashMap<PathBuf, Storage>,
+    fid_mapping: Vec<PathBuf>
 }
 
 impl Files {
@@ -75,25 +76,41 @@ impl Files {
             inner: RefCell::new(Inner {
                 func: Box::new(func),
                 loaded: Default::default(),
+                fid_mapping: Default::default(),
             }),
         }
     }
     pub fn load<'a>(&'a self, path: &Path) -> Return<'a> {
         let mut myself = self.inner.borrow_mut();
         if !myself.loaded.contains_key(path) {
+            let fid = FileId(myself.fid_mapping.len() as u32);
             let result = (myself.func)(path);
-            let storage = (result, FileId(myself.loaded.len() as u32));
-            myself.loaded.insert(path.to_path_buf(), storage);
+            myself.fid_mapping.push(path.to_path_buf());
+            myself.loaded.insert(path.to_path_buf(), result.map(|cow|(cow, fid)));
         }
 
         match &myself.loaded[path] {
-            (Ok(ok), fid) => {
+            Ok((ok, fid)) => {
                 // We know this is safe so long as the backing owned string does not drop before the lifetime of this struct ends
-                let str = unsafe { std::mem::transmute::<&str, &'a str>(&*ok) };
+                let str = unsafe { std::mem::transmute::<&str, &'a str>(ok) };
                 Ok((str, *fid))
             }
-            (Err(e), _) => Err(e.clone()),
+            Err(e) => Err(e.clone()),
         }
+    }
+
+    pub fn file<'a>(&'a self, fid: FileId) -> (&'a Path, &'a str) {
+        let myself = self.inner.borrow();
+        let path = &myself.fid_mapping[fid.0 as usize];
+        let (contents, _) = myself.loaded[path]
+            .as_ref()
+            .expect("requested file contents for a file that failed to load");
+
+        // The backing storage lives inside `self`, so extending these references to `'a`
+        // follows the same safety contract as `load`.
+        let path = unsafe { std::mem::transmute::<&Path, &'a Path>(path.as_path()) };
+        let contents = unsafe { std::mem::transmute::<&str, &'a str>(contents) };
+        (path, contents)
     }
 
     pub fn exists(&self, path: &Path) -> bool {

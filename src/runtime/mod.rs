@@ -5,51 +5,38 @@ mod value;
 pub use value::*;
 
 use crate::{
-    bytecode::{CodeLoc, Program},
-    files::{Files, Node, Span},
-    parse::{Parser, ast},
-    runtime::{eval::Evaluator, scope::Scope},
+    bytecode::{CodeLoc, Program}, files::{Files, Node, Span}, parse::{Parser, ast}, report::Reports, runtime::{eval::Evaluator, scope::Scope}
 };
 
 #[derive(Debug)]
 pub struct Runtime<'a> {
     loader: &'a Files,
     program: Program,
-    top_scope: Scope,
+    default_scope: Scope,
 }
 
 impl<'a> Runtime<'a> {
     pub fn new(loader: &'a Files, top_scope: Scope) -> Self {
         Self {
             loader,
-            top_scope,
+            default_scope: top_scope,
             program: Default::default(),
         }
     }
 
-    pub fn load(&mut self, path: &str) -> LazyExpr {
+    pub fn load(&mut self, path: &str) -> Result<LazyValue, Reports<'a>> {
         let (file, fid) = self.loader.load(path.as_ref()).unwrap();
 
-        let expr = match Parser::parse(file, fid) {
-            Ok(ok) => ok,
-            Err(err) => {
-                let range = 0..file.len();
-
-                for err in err.render(path.as_ref(), file) {
-                    println!("{err}")
-                }
-
-                Node(ast::Expr::Ident("null"), Span::new(range.into(), fid))
-            }
-        };
+        let expr = Parser::parse(file, fid)?;
 
         let expr = self.program.compile(&expr);
-        LazyExpr::uneval(expr, self.top_scope.clone())
+        let expr = LazyValue::uneval(expr, self.default_scope.clone());
+        Ok(expr)
     }
 
-    pub fn eval_lazy(&mut self, expr: LazyExpr) -> Value {
+    pub fn eval_lazy(&mut self, expr: LazyValue) -> Value {
         match expr {
-            LazyExpr::Unevaluated(state) => {
+            LazyValue::Unevaluated(state) => {
                 let mut state = state.borrow_mut();
                 match &*state {
                     LazyExprState::Unevaluated(code_loc, scope) => {
@@ -62,12 +49,8 @@ impl<'a> Runtime<'a> {
                     LazyExprState::Constructing(code_loc) => todo!(),
                 }
             }
-            LazyExpr::Evaluated(value) => value,
+            LazyValue::Evaluated(value) => value,
         }
-    }
-
-    pub fn eval(&mut self, expr: CodeLoc) -> Value {
-        Evaluator::new(self, expr, self.top_scope.clone()).eval()
     }
 
     pub fn deep_eval(&mut self, value: Value) -> Value {
@@ -77,9 +60,3 @@ impl<'a> Runtime<'a> {
         value
     }
 }
-
-// #[derive(Clone, Debug)]
-// pub struct Expr<'a> {
-//     pub scope: ExprScope<'a>,
-//     pub expr: CodeLoc,
-// }

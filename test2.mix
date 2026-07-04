@@ -8,4 +8,4 @@ if true then
     value = 12.2,
 }
 
- else 43
+ else [(43 meow)]

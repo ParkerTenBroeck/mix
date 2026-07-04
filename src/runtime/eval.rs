@@ -2,7 +2,7 @@ use std::borrow::Cow;
 
 use crate::{
     bytecode::{CodeLoc, CodeLocOffset, OpCode},
-    runtime::{AttrSet, Lambda, LazyExpr, List, Runtime, Value, scope::Scope},
+    runtime::{AttrSet, Lambda, LazyValue, List, Runtime, Value, scope::Scope},
 };
 
 #[derive(Debug)]
@@ -204,7 +204,7 @@ impl<'a, 'b> Evaluator<'a, 'b> {
                     };
                     attrset
                         .get_mut()
-                        .insert(name, LazyExpr::construct_begin(expr));
+                        .insert(name, LazyValue::construct_begin(expr));
                     self.push_value(Value::AttrSet(attrset))?;
                 }
                 OpCode::FinalizeAttrSet(recursive) => {
@@ -230,7 +230,7 @@ impl<'a, 'b> Evaluator<'a, 'b> {
                         todo!()
                     };
                     list.get_mut()
-                        .push_back(LazyExpr::uneval(expr, self.scope.clone()));
+                        .push_back(LazyValue::uneval(expr, self.scope.clone()));
                     self.push_value(Value::List(list))?;
                 }
                 OpCode::Apply(loc) => {

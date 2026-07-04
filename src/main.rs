@@ -1,4 +1,4 @@
-use mix::{files::Files, runtime::Runtime};
+use mix::{files::Files, runtime::{Runtime, Value, scope::ScopeBuilder}};
 
 fn main() {
     let files = Files::new(|path| match std::fs::read_to_string(path) {
@@ -6,15 +6,22 @@ fn main() {
         Err(err) => Err(format!("{}: {err}", path.display()).into()),
     });
 
-    // let top_scope = {
-    //     let mut map: std::collections::HashMap<std::borrow::Cow<'_, str>, mix::runtime::LazyExpr<'_>> = Default::default();
-    //     map.insert("null".into(), Value::Null.into());
-    //     map.insert("false".into(), Value::Bool(false).into());
-    //     map.insert("true".into(), Value::Bool(true).into());
-    //     ExprScope::bottom(map)
-    // };
-    let mut runtime = Runtime::new(&files, Default::default());
-    let res = runtime.load("test2.mix");
+    let scope = ScopeBuilder::new()
+        .with("null", Value::Null)
+        .with("false", false)
+        .with("true", true)
+        .build();
+    
+    let mut runtime = Runtime::new(&files, scope);
+    let res = match runtime.load("test2.mix"){
+        Ok(ok) => ok,
+        Err(reports) => {
+            for report in reports.render(&files){
+                println!("{report}")
+            }
+            return;
+        },
+    };
     println!("{runtime:#?}");
     println!("{res:#?}");
     let res = runtime.eval_lazy(res);

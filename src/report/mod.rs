@@ -3,7 +3,7 @@ pub mod parser;
 
 use std::borrow::Cow;
 
-use crate::files::Span;
+use crate::files::{FileId, Files, Span};
 
 #[derive(Clone, Debug, Default)]
 pub struct Reports<'a> {
@@ -49,6 +49,31 @@ pub struct ReportHelp<'a> {
 pub struct ReportPatch<'a> {
     pub span: Span,
     pub replacement: Cow<'a, str>,
+}
+
+#[derive(Clone, Debug)]
+struct FileAnnotations {
+    fid: FileId,
+    annotations: Vec<FileAnnotation>,
+}
+
+#[derive(Clone, Debug)]
+struct FileAnnotation {
+    kind: ReportAnnotationKind,
+    span: Span,
+    label: Option<String>,
+}
+
+#[derive(Clone, Debug)]
+struct FilePatches {
+    fid: FileId,
+    patches: Vec<FilePatch>,
+}
+
+#[derive(Clone, Debug)]
+struct FilePatch {
+    span: Span,
+    replacement: String,
 }
 
 impl<'a> ReportAnnotation<'a> {
@@ -112,72 +137,147 @@ impl<'a> Reports<'a> {
         }
     }
 
-    pub fn render(&self, path: &str, file: &str) -> Vec<String> {
-        self.reports
-            .iter()
-            .map(|report| report.render(path, file))
-            .collect()
+    pub fn render(&self, files: &Files) -> Vec<String> {
+        self.reports.iter().map(|report| report.render(files)).collect()
     }
 }
 
 impl<'a> Report<'a> {
-    pub fn render(&self, path: &str, file: &str) -> String {
+    pub fn render(&self, files: &Files) -> String {
         use annotate_snippets::*;
 
         let renderer = Renderer::styled().decor_style(renderer::DecorStyle::Unicode);
-        let groups: Vec<Group<'_>> = std::iter::once(
-            self.level
-                .annotate_level()
-                .primary_title(self.title.as_ref())
-                .element(self.snippet(path, file)),
-        )
-        .chain(self.helps.iter().map(|help| {
-            let snippet = help
-                .patches
-                .iter()
-                .fold(Snippet::source(file), |snippet, patch| {
-                    snippet.patch(Patch::new(
-                        patch.span.range.into(),
-                        patch.replacement.as_ref(),
-                    ))
-                });
-            Level::HELP
-                .secondary_title(help.title.as_ref())
-                .element(snippet)
-        }))
-        .collect();
+        let annotation_groups = self.annotation_groups(files);
+        let help_groups = self.help_groups(files);
+        let groups: Vec<Group<'_>> = annotation_groups.into_iter().chain(help_groups).collect();
 
         renderer.render(&groups)
     }
 
-    fn snippet<'s>(
-        &'s self,
-        path: &'s str,
-        file: &'s str,
-    ) -> annotate_snippets::Snippet<'s, annotate_snippets::Annotation<'s>>
-    where
-        'a: 's,
-    {
-        use annotate_snippets::{Annotation, AnnotationKind, Snippet};
+    fn annotation_groups<'f>(&self, files: &'f Files) -> Vec<annotate_snippets::Group<'f>> {
+        use annotate_snippets::{Annotation, AnnotationKind, Group, Snippet};
 
-        let annotations: Vec<Annotation<'_>> = self
-            .annotations
-            .iter()
-            .map(|annotation| match annotation.kind {
-                ReportAnnotationKind::Primary => {
-                    AnnotationKind::Primary.span(annotation.span.range.into())
-                }
-                ReportAnnotationKind::Context => {
-                    let kind = AnnotationKind::Context.span(annotation.span.range.into());
-                    match annotation.label.as_deref() {
-                        Some(label) => kind.label(label),
-                        None => kind,
-                    }
+        let grouped = self.group_annotations();
+        grouped
+            .into_iter()
+            .enumerate()
+            .map(|(index, file_annotations)| {
+                let (path, source) = files.file(file_annotations.fid);
+                let annotations: Vec<Annotation<'f>> = file_annotations
+                    .annotations
+                    .into_iter()
+                    .map(|annotation| match annotation.kind {
+                        ReportAnnotationKind::Primary => {
+                            AnnotationKind::Primary.span(annotation.span.range.into())
+                        }
+                        ReportAnnotationKind::Context => {
+                            let kind = AnnotationKind::Context.span(annotation.span.range.into());
+                            match annotation.label {
+                                Some(label) => kind.label(label),
+                                None => kind,
+                            }
+                        }
+                    })
+                    .collect();
+                let snippet = Snippet::source(source)
+                    .path(path.display().to_string())
+                    .annotations(annotations);
+
+                if index == 0 {
+                    self.level
+                        .annotate_level()
+                        .primary_title(self.title.to_string())
+                        .element(snippet)
+                } else {
+                    Group::with_level(self.level.annotate_level()).element(snippet)
                 }
             })
-            .collect();
+            .collect()
+    }
 
-        Snippet::source(file).path(path).annotations(annotations)
+    fn help_groups<'f>(&self, files: &'f Files) -> Vec<annotate_snippets::Group<'f>> {
+        use annotate_snippets::{Group, Level, Patch, Snippet};
+
+        self.helps
+            .iter()
+            .flat_map(|help| {
+                self.group_patches(help)
+                    .into_iter()
+                    .enumerate()
+                    .map(move |(index, file_patches)| {
+                        let (path, source) = files.file(file_patches.fid);
+                        let snippet = Snippet::source(source)
+                            .path(path.display().to_string())
+                            .patches(file_patches.patches.into_iter().map(|patch| {
+                                Patch::new(patch.span.range.into(), patch.replacement)
+                            }));
+
+                        if index == 0 {
+                            Level::HELP
+                                .secondary_title(help.title.to_string())
+                                .element(snippet)
+                        } else {
+                            Group::with_level(Level::HELP).element(snippet)
+                        }
+                    })
+            })
+            .collect()
+    }
+
+    fn group_annotations(&self) -> Vec<FileAnnotations> {
+        let mut grouped = Vec::new();
+
+        for annotation in &self.annotations {
+            let Some(existing) = grouped
+                .iter_mut()
+                .find(|existing: &&mut FileAnnotations| existing.fid == annotation.span.fid)
+            else {
+                grouped.push(FileAnnotations {
+                    fid: annotation.span.fid,
+                    annotations: vec![FileAnnotation {
+                        kind: annotation.kind,
+                        span: annotation.span,
+                        label: annotation.label.as_ref().map(|label| label.to_string()),
+                    }],
+                });
+                continue;
+            };
+
+            existing.annotations.push(FileAnnotation {
+                kind: annotation.kind,
+                span: annotation.span,
+                label: annotation.label.as_ref().map(|label| label.to_string()),
+            });
+        }
+
+        grouped
+    }
+
+    fn group_patches(&self, help: &ReportHelp<'_>) -> Vec<FilePatches> {
+        let mut grouped = Vec::new();
+
+        for patch in &help.patches {
+            let Some(existing) = grouped
+                .iter_mut()
+                .find(|existing: &&mut FilePatches| existing.fid == patch.span.fid)
+            else {
+                grouped.push(FilePatches {
+                    fid: patch.span.fid,
+                    patches: vec![FilePatch {
+                        span: patch.span,
+                        replacement: patch.replacement.to_string(),
+                    }],
+                });
+                continue;
+            };
+
+            existing.patches.push(FilePatch {
+                span: patch.span,
+                replacement: patch.replacement.to_string(),
+            });
+        }
+
+        grouped
     }
 }
 
