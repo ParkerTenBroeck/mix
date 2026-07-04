@@ -28,14 +28,14 @@ impl Compiler {
         builder: &'b mut ExprBuilder<'a>,
         expr: &Node<ast::Expr>,
     ) -> &'b mut ExprBuilder<'a> {
-        let Node(ast_expr, loc) = expr;
+        let Node(ast_expr, span) = expr;
 
         match ast_expr {
             ast::Expr::Lambda(lambda) => {
-                // builder.emit_load_lambda(|builder|{
-
-                // });
-                // builder.emit(OpCode::LoadLambda(self.compile_lambda(loc, lambda)));
+                builder.emit_load_lambda(*span, |builder|{
+                    //TODO how do I want to do argument stuff?
+                    self.compile_expr(builder, &lambda.body);
+                });
             }
             ast::Expr::FuncApp { func, arg } => {
                 self.compile_expr(builder, func)
@@ -113,7 +113,7 @@ impl Compiler {
 
                 for attr in &attrs.dynamic_attrs {
                     if let Some(value) = &attr.0.value {
-                        self.compile_attr_path(builder, &attr.0.path);
+                        self.compile_attr_part(builder, &attr.0.part);
                         let expr = builder
                             .emit_expr(value.1, |builder| _ = self.compile_expr(builder, value));
                         builder.emit(OpCode::InitAttrExpr(expr.1));
@@ -132,13 +132,10 @@ impl Compiler {
                 }
             }
             ast::Expr::AccessAttr { expr, path, or } => {
-                // let or = or.as_ref().map(|expr| self.compile_expr(expr));
-                // self.compile_expr_inline(bc, expr);
-                // bc.emit(OpCode::GetAttr(or));
+                
             }
             ast::Expr::HasAttr { expr, path } => {
-                // self.compile_expr_inline(bc, expr);
-                // bc.emit(OpCode::HasAttr);
+                
             }
             ast::Expr::Ident("true") => _ = builder.emit_load_bool(true),
             ast::Expr::Ident("false") => _ = builder.emit_load_bool(false),
@@ -151,17 +148,13 @@ impl Compiler {
         builder
     }
 
-    fn compile_attr_path(&mut self, builder: &mut ExprBuilder, path: &Node<ast::AttrPath>) {
-        // builder.emit(OpCode::CreatePath);
-        for part in &path.0.parts {
-            match &part.0 {
-                ast::AttrPathPart::Ident(ident) => {
-                    builder.emit_load_str(ident);
-                    // _ = builder.emit_load_str(ident).emit(OpCode::PushPathPart)
-                }
-                ast::AttrPathPart::Expr(expr) => {
-                    _ = self.compile_expr(builder, &Node(expr.clone(), part.1));
-                }
+    fn compile_attr_part(&mut self, builder: &mut ExprBuilder, part: &Node<ast::AttrPathPart>) {
+        match &part.0 {
+            ast::AttrPathPart::Ident(ident) => {
+                builder.emit_load_str(ident);
+            }
+            ast::AttrPathPart::Expr(expr) => {
+                _ = self.compile_expr(builder, &Node(expr.clone(), part.1));
             }
         }
     }

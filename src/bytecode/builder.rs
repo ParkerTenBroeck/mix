@@ -202,6 +202,10 @@ pub trait ByteCodeBuilder: ProgramBuilder {
     fn emit_load_bool(&mut self, bool: bool) -> &mut Self {
         self.emit(OpCode::LoadBool(bool))
     }
+    fn emit_load_lambda(&mut self, span: Span, body: impl FnMut(&mut ExprBuilder<'_>)) -> &mut Self {
+        let lambda = self.emit_lambda(span, body).0;
+        self.emit(OpCode::LoadLambda(lambda))
+    }
 }
 
 #[must_use]

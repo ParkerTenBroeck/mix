@@ -108,7 +108,7 @@ pub struct StaticAttr<'a> {
 
 #[derive(Clone, Debug)]
 pub struct DynamicAttr<'a> {
-    pub path: Node<AttrPath<'a>>,
+    pub part: Node<AttrPathPart<'a>>,
     pub value: Option<Node<Expr<'a>>>,
 }
 

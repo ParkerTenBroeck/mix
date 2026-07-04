@@ -3,7 +3,7 @@ use std::borrow::Cow;
 use crate::{
     files::{Node, Span},
     mir::ast::{
-        self, AttrPath, AttrPathPart, AttrSet, DynamicAttr, Expr, Lambda, LetBinding, Num,
+        self, AttrPathPart, AttrSet, DynamicAttr, Expr, Lambda, LetBinding, Num,
         Pattern, StaticAttr,
     },
     parse,
@@ -152,13 +152,7 @@ impl<'a> MirLowerer<'a> {
                     String::new(),
                 );
             } else {
-                dynamic_attrs.push(Node(
-                    DynamicAttr {
-                        path: self.lower_attr_path(attr.0.path),
-                        value: lowered_value,
-                    },
-                    attr.1,
-                ));
+                dynamic_attrs.push(self.lower_dynamic_attr(attr.0.path, lowered_value, attr.1));
             }
         }
 
@@ -284,33 +278,83 @@ impl<'a> MirLowerer<'a> {
         )
     }
 
+    fn lower_dynamic_attr(
+        &mut self,
+        path: Node<parse::ast::AttrPath<'a>>,
+        value: Option<Node<ast::Expr<'a>>>,
+        span: Span,
+    ) -> Node<DynamicAttr<'a>> {
+        let mut parts = self.lower_attr_path_parts(path);
+        let part = parts.remove(0);
+        let value = if parts.is_empty() {
+            value
+        } else {
+            Some(Node(
+                Expr::AttrSet(AttrSet {
+                    static_attrs: vec![],
+                    dynamic_attrs: vec![self.build_dynamic_attr(parts, value, span)],
+                }),
+                span,
+            ))
+        };
+
+        Node(DynamicAttr { part, value }, span)
+    }
+
+    fn build_dynamic_attr(
+        &mut self,
+        mut parts: Vec<Node<AttrPathPart<'a>>>,
+        value: Option<Node<ast::Expr<'a>>>,
+        span: Span,
+    ) -> Node<DynamicAttr<'a>> {
+        let part = parts.remove(0);
+        let value = if parts.is_empty() {
+            value
+        } else {
+            Some(Node(
+                Expr::AttrSet(AttrSet {
+                    static_attrs: vec![],
+                    dynamic_attrs: vec![self.build_dynamic_attr(parts, value, span)],
+                }),
+                span,
+            ))
+        };
+
+        Node(DynamicAttr { part, value }, span)
+    }
+
     fn lower_attr_path(
         &mut self,
-        Node(path, span): Node<parse::ast::AttrPath<'a>>,
-    ) -> Node<AttrPath<'a>> {
+        path: Node<parse::ast::AttrPath<'a>>,
+    ) -> Node<ast::AttrPath<'a>> {
+        let span = path.1;
         Node(
-            AttrPath {
-                parts: path
-                    .parts
-                    .into_iter()
-                    .map(|Node(part, part_span)| {
-                        Node(
-                            match part {
-                                parse::ast::AttrPathPart::Ident(ident)
-                                | parse::ast::AttrPathPart::Str(ident) => {
-                                    AttrPathPart::Ident(ident)
-                                }
-                                parse::ast::AttrPathPart::Expr(expr) => {
-                                    AttrPathPart::Expr(self.lower_expr(Node(expr, part_span)).0)
-                                }
-                            },
-                            part_span,
-                        )
-                    })
-                    .collect(),
+            ast::AttrPath {
+                parts: self.lower_attr_path_parts(path),
             },
             span,
         )
+    }
+
+    fn lower_attr_path_parts(
+        &mut self,
+        Node(path, _span): Node<parse::ast::AttrPath<'a>>,
+    ) -> Vec<Node<AttrPathPart<'a>>> {
+        path.parts
+            .into_iter()
+            .map(|Node(part, part_span)| {
+                Node(
+                    match part {
+                        parse::ast::AttrPathPart::Ident(ident)
+                        | parse::ast::AttrPathPart::Str(ident) => AttrPathPart::Ident(ident),
+                        parse::ast::AttrPathPart::Expr(expr) => {
+                            AttrPathPart::Expr(self.lower_expr(Node(expr, part_span)).0)
+                        }
+                    },
+                    part_span,
+                )
+            })
+            .collect()
     }
 
     fn map_binop(&self, op: parse::ast::BinOp) -> ast::BinOp {
