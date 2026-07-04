@@ -1,14 +1,14 @@
 pub mod eval;
-pub mod files;
 pub mod scope;
 mod value;
 
 pub use value::*;
 
 use crate::{
-    bytecode::{CodeLoc, Program},
-    parse::{Parser, ast::{self, Span}},
-    runtime::{eval::Evaluator, files::Files, scope::Scope},
+    bytecode::{CodeLoc, Program}, files::Files, parse::{
+        Parser,
+        ast::{self, Span},
+    }, runtime::{eval::Evaluator, scope::Scope}
 };
 
 #[derive(Debug)]
@@ -53,22 +53,21 @@ impl<'a> Runtime<'a> {
                 let mut state = state.borrow_mut();
                 match &*state {
                     LazyExprState::Unevaluated(code_loc, scope) => {
-                        let res = Evaluator::new(self).eval_expr(scope.clone(), *code_loc);
+                        let res = Evaluator::new(self, *code_loc, scope.clone()).eval();
                         *state = LazyExprState::Evaluated(res.clone());
                         res
-                    },
+                    }
                     LazyExprState::Evaluating => todo!(),
                     LazyExprState::Evaluated(value) => value.clone(),
                     LazyExprState::Constructing(code_loc) => todo!(),
                 }
-            },
+            }
             LazyExpr::Evaluated(value) => value,
         }
-
     }
-    
+
     pub fn eval(&mut self, expr: CodeLoc) -> Value {
-        Evaluator::new(self).eval_expr(self.top_scope.clone(), expr)
+        Evaluator::new(self, expr, self.top_scope.clone()).eval()
     }
 
     pub fn deep_eval(&mut self, value: Value) -> Value {

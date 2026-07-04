@@ -25,6 +25,18 @@ pub enum Value {
     Lambda(Lambda),
 }
 
+impl From<i64> for Value {
+    fn from(value: i64) -> Self {
+        Self::Int(value)
+    }
+}
+
+impl From<f64> for Value {
+    fn from(value: f64) -> Self {
+        Self::Float(value)
+    }
+}
+
 #[derive(Clone, Trace)]
 pub struct NativeLambda {
     inner: Gc<NativeLambdaInner>,
@@ -59,11 +71,13 @@ pub enum LazyExpr {
 impl std::fmt::Debug for LazyExpr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Unevaluated(arg0) => if let Ok(borrow) = arg0.try_borrow(){
-                f.debug_tuple("Unevaluated").field(&*borrow).finish()
-            }else{
-                f.debug_tuple("Unevaluated").finish()
-            },
+            Self::Unevaluated(arg0) => {
+                if let Ok(borrow) = arg0.try_borrow() {
+                    f.debug_tuple("Unevaluated").field(&*borrow).finish()
+                } else {
+                    f.debug_tuple("Unevaluated").finish()
+                }
+            }
             Self::Evaluated(arg0) => f.debug_tuple("Evaluated").field(arg0).finish(),
         }
     }
@@ -78,15 +92,15 @@ impl LazyExpr {
         match self {
             LazyExpr::Unevaluated(gc) => {
                 let mut inner = gc.borrow_mut();
-                match &*inner{
+                match &*inner {
                     LazyExprState::Constructing(code_loc) => {
                         *inner = LazyExprState::Unevaluated(*code_loc, scope);
                         Ok(())
-                    },
-                    _ => Err(())
+                    }
+                    _ => Err(()),
                 }
-            },
-            _ => Err(())
+            }
+            _ => Err(()),
         }
     }
 
@@ -96,7 +110,6 @@ impl LazyExpr {
         ))))
     }
 }
-
 
 #[derive(Clone, Trace)]
 pub enum LazyExprState {
@@ -152,12 +165,14 @@ impl AttrSet {
         Gc::make_mut(&mut self.inner)
     }
 
-    pub fn new(map: HashMap<String, LazyExpr>) -> Self{
-        Self { inner: Gc::new(map) }
+    pub fn new(map: HashMap<String, LazyExpr>) -> Self {
+        Self {
+            inner: Gc::new(map),
+        }
     }
 }
 
-impl std::fmt::Debug for AttrSet{
+impl std::fmt::Debug for AttrSet {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_tuple("AttrSet").field(&*self.inner).finish()
     }

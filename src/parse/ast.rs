@@ -1,6 +1,6 @@
 use std::range::Range;
 
-use crate::runtime::files::FileId;
+use crate::files::FileId;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Span {
@@ -16,15 +16,24 @@ impl Span {
         let start = self.range.start.min(other.range.start);
         let end = self.range.end.max(other.range.end);
         assert_eq!(self.fid, other.fid);
-        Self{ range: (start..end).into(), fid: other.fid }
+        Self {
+            range: (start..end).into(),
+            fid: other.fid,
+        }
     }
-    
+
     pub fn before(self) -> Self {
-        Self { range: (self.range.start..self.range.start).into(), fid: self.fid }
+        Self {
+            range: (self.range.start..self.range.start).into(),
+            fid: self.fid,
+        }
     }
 
     pub fn after(self) -> Self {
-        Self { range: (self.range.end..self.range.end).into(), fid: self.fid }
+        Self {
+            range: (self.range.end..self.range.end).into(),
+            fid: self.fid,
+        }
     }
 }
 

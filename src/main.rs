@@ -1,8 +1,6 @@
-use mix::runtime::{Runtime, files::Files};
-
+use mix::{files::Files, runtime::Runtime};
 
 fn main() {
-
     let files = Files::new(|path| match std::fs::read_to_string(path) {
         Ok(ok) => Ok(ok.into()),
         Err(err) => Err(format!("{}: {err}", path.display()).into()),

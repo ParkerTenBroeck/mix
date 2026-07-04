@@ -1,1 +1,11 @@
-if true then 22 else 43
+if true then 
+
+{
+    beep = inc (inc 1),
+    list = [ (func: 12), (func 12) ],
+    meow = "nya",
+    inc = x:x+1,
+    value = 12.2,
+}
+
+ else 43

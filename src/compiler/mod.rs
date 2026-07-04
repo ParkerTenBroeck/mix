@@ -1,25 +1,32 @@
 use crate::{
-    bytecode::{ByteCodeBuilder, CodeLoc, ExprBuilder, OpCode, ProgramBuilder}, parse::ast,
+    bytecode::{ByteCodeBuilder, CodeLoc, ExprBuilder, OpCode, ProgramBuilder},
+    parse::ast,
 };
 
 #[derive(Default)]
-pub struct Compiler {
-}
+pub struct Compiler {}
 
 impl Compiler {
     pub fn new() -> Self {
-        Self{}
+        Self {}
     }
 
-
-    pub fn compile_top_level(&mut self, mut builder: impl ProgramBuilder, expr: &ast::Node<ast::Expr>) -> CodeLoc{
+    pub fn compile_top_level(
+        &mut self,
+        mut builder: impl ProgramBuilder,
+        expr: &ast::Node<ast::Expr>,
+    ) -> CodeLoc {
         let (_, loc) = builder.emit_expr(expr.1, |eb| {
             self.compile_expr(eb, expr);
         });
         loc
     }
 
-    fn compile_expr<'a, 'b>(&mut self, builder: &'b mut ExprBuilder<'a>, expr: &ast::Node<ast::Expr>) -> &'b mut ExprBuilder<'a> {
+    fn compile_expr<'a, 'b>(
+        &mut self,
+        builder: &'b mut ExprBuilder<'a>,
+        expr: &ast::Node<ast::Expr>,
+    ) -> &'b mut ExprBuilder<'a> {
         let ast::Node(ast_expr, loc) = expr;
 
         match ast_expr {
@@ -62,11 +69,17 @@ impl Compiler {
                 rhs,
             } => {
                 self.compile_expr(builder, lhs);
-                
+
                 match op.0 {
-                    ast::BinOp::And => builder.emit_and(|builder| _ = self.compile_expr(builder, rhs)),
-                    ast::BinOp::Or => builder.emit_or(|builder| _ = self.compile_expr(builder, rhs)),
-                    ast::BinOp::LogImp => builder.emit_log_imp(|builder| _ = self.compile_expr(builder, rhs)),
+                    ast::BinOp::And => {
+                        builder.emit_and(|builder| _ = self.compile_expr(builder, rhs))
+                    }
+                    ast::BinOp::Or => {
+                        builder.emit_or(|builder| _ = self.compile_expr(builder, rhs))
+                    }
+                    ast::BinOp::LogImp => {
+                        builder.emit_log_imp(|builder| _ = self.compile_expr(builder, rhs))
+                    }
                     _ => unreachable!(),
                 };
             }
@@ -98,24 +111,26 @@ impl Compiler {
             }
             ast::Expr::Let { bindings } => todo!(),
             ast::Expr::AttrSet { attrs } => {
+                builder.emit(OpCode::CreateAttrSet);
 
-                for attr in attrs{
-                    self.compile_attr_path(builder, &attr.0.path);
-                }
-
-                builder.emit(OpCode::CreateAttrSet(attrs.len()));
-
-                for attr in attrs{
-                    if let Some(value) = &attr.0.value{
-                        let expr = builder.emit_expr(value.1, |builder| _ = self.compile_expr(builder, value));
+                for attr in attrs {
+                    if let Some(value) = &attr.0.value {
+                        self.compile_attr_path(builder, &attr.0.path);
+                        let expr = builder
+                            .emit_expr(value.1, |builder| _ = self.compile_expr(builder, value));
                         builder.emit(OpCode::InitAttrExpr(expr.1));
+                    } else {
+                        todo!()
                     }
                 }
+                builder.emit(OpCode::FinalizeAttrSet(true));
             }
             ast::Expr::List { elements } => {
                 builder.emit_create_list(elements.len());
                 for element in elements {
-                    builder.emit_append_list(element.1, |builder| _ = self.compile_expr(builder, element));
+                    builder.emit_append_list(element.1, |builder| {
+                        _ = self.compile_expr(builder, element)
+                    });
                 }
             }
             ast::Expr::AccessAttr { expr, path, or } => {
@@ -140,14 +155,16 @@ impl Compiler {
     }
 
     fn compile_attr_path(&mut self, builder: &mut ExprBuilder, path: &ast::Node<ast::AttrPath>) {
-        builder.emit(OpCode::CreatePath);
+        // builder.emit(OpCode::CreatePath);
         for part in &path.0.parts {
             match &part.0 {
                 ast::AttrPathPart::Ident(ident) => {
-                    _ = builder.emit_load_str(ident).emit(OpCode::PushPathPart)
+                    builder.emit_load_str(ident);
+                    // _ = builder.emit_load_str(ident).emit(OpCode::PushPathPart)
                 }
                 ast::AttrPathPart::Str(str) => {
-                    _ = builder.emit_load_str(str).emit(OpCode::PushPathPart)
+                    builder.emit_load_str(str);
+                    // _ = builder.emit_load_str(str).emit(OpCode::PushPathPart)
                 }
                 ast::AttrPathPart::Expr(_) => {
                     todo!()

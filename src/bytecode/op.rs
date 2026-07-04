@@ -24,15 +24,12 @@ pub enum OpCode {
 
     If(CodeLocOffset),
 
-    CreateAttrSet(usize),
+    CreateAttrSet,
     InitAttrExpr(ExprLoc),
+    FinalizeAttrSet(bool),
 
     CreateList(usize),
     AppendList(ExprLoc),
-
-    CreatePath,
-    PushPathPart,
-    PopPathPart,
 
     Apply(ExprLoc),
 
@@ -41,7 +38,9 @@ pub enum OpCode {
     LoadInt(i64),
     LoadFloat(f64),
     LoadBool(bool),
+
     WithScope,
+    LastScope,
 
     HasAttr,
     GetAttr,

@@ -121,9 +121,9 @@ impl<'a> Report<'a> {
                                 .patch(Patch::new(span.before().range.into(), "("))
                                 .patch(Patch::new(span.after().range.into(), ")")),
                         ),
-                    Level::HELP
-                        .secondary_title("or add comma if not")
-                        .element(Snippet::source(file).patch(Patch::new(func.after().range.into(), ","))),
+                    Level::HELP.secondary_title("or add comma if not").element(
+                        Snippet::source(file).patch(Patch::new(func.after().range.into(), ",")),
+                    ),
                 ],
                 ParseError::FuncDefInList => &[
                     Level::ERROR

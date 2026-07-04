@@ -1,11 +1,10 @@
-use std::{ops::Not, range::Range};
-
 use crate::{
     lex::{LexError, Lexer, Token},
     parse::{
         Report,
         ast::{BinOp, Node, Span, UnOp},
-    }, runtime::files::FileId,
+    },
+    files::FileId,
 };
 
 use super::ast;
@@ -311,10 +310,7 @@ impl<'a> Parser<'a> {
         self.next();
         let op = Node(op, self.last.1);
         let expr = self.parse_expr_unop();
-        Node(
-            expr.0,
-            op.1.merge(expr.1)
-        )
+        Node(expr.0, op.1.merge(expr.1))
     }
 
     fn parse_func_application(&mut self) -> Node<ast::Expr<'a>> {
@@ -433,10 +429,10 @@ impl<'a> Parser<'a> {
                 let then_expr = Box::new(self.parse_expr());
                 self.next(); // TODO
                 let else_expr = Box::new(self.parse_expr());
-                ast::Expr::IfThenElse { 
-                    cond, 
-                    then_expr, 
-                    else_expr 
+                ast::Expr::IfThenElse {
+                    cond,
+                    then_expr,
+                    else_expr,
                 }
             }
             Token::Ident(ident) => ast::Expr::Ident(ident),

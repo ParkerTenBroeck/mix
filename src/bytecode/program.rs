@@ -4,15 +4,12 @@ use dumpster::Trace;
 
 use super::*;
 
-use crate::{
-    parse::ast::{self, Span},
-};
-
+use crate::parse::ast::{self, Span};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Trace)]
 pub struct CodeLoc(usize);
 
-impl std::ops::Add<CodeLocOffset> for CodeLoc{
+impl std::ops::Add<CodeLocOffset> for CodeLoc {
     type Output = CodeLoc;
 
     fn add(self, rhs: CodeLocOffset) -> Self::Output {
@@ -63,9 +60,9 @@ impl Program {
     pub fn get(&self, loc: CodeLoc) -> (OpCode, CodeLoc) {
         (self.code[loc.0], CodeLoc(loc.0 + 1))
     }
-    
+
     pub fn get_str(&self, str: StrId) -> &str {
-        self.strings.get(str.0.get()-1).unwrap()
+        self.strings.get(str.0.get() - 1).unwrap()
     }
 }
 
@@ -81,19 +78,23 @@ impl ProgramBuilder for Program {
         builder.emit(OpCode::Ret);
 
         let built_code = builder.finish();
-        
+
         let code = CodeLoc(self.code.len());
         self.expressions.push(Expr { code, span });
         let expr_id = ExprId(NonZeroUsize::new(self.expressions.len()).unwrap());
 
-        for op in built_code{
+        for op in built_code {
             self.code.push(op);
         }
 
         (expr_id, code)
     }
 
-    fn emit_lambda(&mut self, loc: Span, expr: impl FnOnce(&mut ExprBuilder)) -> (LambdaId, CodeLoc) {
+    fn emit_lambda(
+        &mut self,
+        loc: Span,
+        expr: impl FnOnce(&mut ExprBuilder),
+    ) -> (LambdaId, CodeLoc) {
         todo!()
     }
 }
