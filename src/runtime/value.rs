@@ -106,19 +106,19 @@ impl LazyValue {
         Self::Unevaluated(Gc::new(RefCell::new(LazyExprState::Constructing(code))))
     }
 
-    pub fn construct_end(&self, scope: Scope) -> Result<(), ()> {
+    pub fn construct_end(&self, scope: Scope) -> bool {
         match self {
             LazyValue::Unevaluated(gc) => {
                 let mut inner = gc.borrow_mut();
                 match &*inner {
                     LazyExprState::Constructing(code_loc) => {
                         *inner = LazyExprState::Unevaluated(*code_loc, scope);
-                        Ok(())
+                        true
                     }
-                    _ => Err(()),
+                    _ => false,
                 }
             }
-            _ => Err(()),
+            _ => false,
         }
     }
 

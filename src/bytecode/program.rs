@@ -37,7 +37,7 @@ pub struct ExprId(NonZeroUsize);
 #[derive(Debug)]
 pub struct Lambda {
     pub code: CodeLoc,
-    pub loc: Span,
+    pub span: Span,
 }
 
 #[derive(Debug)]
@@ -95,9 +95,11 @@ impl ProgramBuilder for Program {
 
     fn emit_lambda(
         &mut self,
-        loc: Span,
+        span: Span,
         expr: impl FnOnce(&mut ExprBuilder),
     ) -> (LambdaId, CodeLoc) {
-        todo!()
+        let (_, code) = self.emit_expr(span, expr);
+        self.lambdas.push(Lambda { code, span });
+        (LambdaId(NonZeroUsize::new(self.lambdas.len()).unwrap()), code)
     }
 }
