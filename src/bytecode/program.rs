@@ -4,7 +4,10 @@ use dumpster::Trace;
 
 use super::*;
 
-use crate::{files::{Node, Span}, parse::ast::{self}};
+use crate::{
+    files::{Node, Span},
+    parse::ast::{self},
+};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Trace)]
 pub struct CodeLoc(usize);

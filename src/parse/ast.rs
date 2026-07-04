@@ -1,7 +1,5 @@
 use crate::files::Node;
 
-
-
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Pattern<'a> {
     pub binding: Option<Node<&'a str>>,

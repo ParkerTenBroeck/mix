@@ -5,10 +5,10 @@ mod value;
 pub use value::*;
 
 use crate::{
-    bytecode::{CodeLoc, Program}, files::{Files, Node, Span}, parse::{
-        Parser,
-        ast,
-    }, runtime::{eval::Evaluator, scope::Scope}
+    bytecode::{CodeLoc, Program},
+    files::{Files, Node, Span},
+    parse::{Parser, ast},
+    runtime::{eval::Evaluator, scope::Scope},
 };
 
 #[derive(Debug)]

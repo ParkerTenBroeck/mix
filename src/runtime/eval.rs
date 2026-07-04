@@ -135,7 +135,7 @@ impl<'a, 'b> Evaluator<'a, 'b> {
                         (Value::String(mut lhs), Value::String(rhs)) => {
                             lhs.push_str(&rhs);
                             Value::String(lhs)
-                        },
+                        }
                         _ => todo!(),
                     };
                     self.push_value(result)?;
@@ -258,9 +258,9 @@ impl<'a, 'b> Evaluator<'a, 'b> {
                     self.scope = Scope::new(attrset, self.scope.clone());
                 }
                 OpCode::LastScope => {
-                    if let Some(previous) = self.scope.prev.clone(){
+                    if let Some(previous) = self.scope.prev.clone() {
                         self.scope = *previous;
-                    }else{
+                    } else {
                         self.scope = Scope::bottom(AttrSet::default());
                     }
                 }

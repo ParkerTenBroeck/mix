@@ -1,5 +1,7 @@
 use crate::{
-    bytecode::{ByteCodeBuilder, CodeLoc, ExprBuilder, OpCode, ProgramBuilder}, files::Node, parse::ast
+    bytecode::{ByteCodeBuilder, CodeLoc, ExprBuilder, OpCode, ProgramBuilder},
+    files::Node,
+    parse::ast,
 };
 
 #[derive(Default)]

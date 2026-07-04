@@ -1,5 +1,15 @@
 use crate::{
-    files::{FileId, Node, Span}, lex::{LexError, Lexer, Token}, parse::ast::{BinOp, UnOp}, report::Report
+    files::{FileId, Node, Span},
+    lex::{Lexer, Token},
+    parse::ast::{BinOp, UnOp},
+    report::{
+        Reports,
+        parser::{
+            ExpectedClosingDelimError, ExpectedEofError, FloatError, FuncAppInListError,
+            FuncDefInListError, IntError, MismatchedDelimError, UnclosedDelimError,
+            UnexpectedTokenAttrPathError, UnexpectedTokenExprError,
+        },
+    },
 };
 
 use super::ast;
@@ -19,29 +29,6 @@ impl Delim {
             Delim::Brace => "}",
         }
     }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum ParseError<'a> {
-    Lex(LexError),
-    FloatErr(std::num::ParseFloatError),
-    IntErr(std::num::ParseIntError),
-    UnclosedDelim {
-        opening: Node<Delim>,
-        closing: Node<Delim>,
-    },
-    MismatchedDelim {
-        opening: Node<Delim>,
-        closing: Node<Delim>,
-    },
-    ExpectedClosingDelim(Delim, Token<'a>),
-    UnexpectedTokenExpr(Token<'a>),
-    UnexpectedTokenAttrPath(Token<'a>),
-    FuncAppInList {
-        func: Span,
-    },
-    FuncDefInList,
-    ExpectedEof(Token<'a>),
 }
 
 impl<'a> Token<'a> {
@@ -94,7 +81,7 @@ impl<'a> Token<'a> {
 pub struct Parser<'a> {
     fid: FileId,
     lex: Lexer<'a>,
-    reports: Report<'a>,
+    reports: Reports<'a>,
     last: Node<Token<'a>>,
     curr: Node<Token<'a>>,
 }
@@ -106,7 +93,7 @@ struct State<'a> {
     curr: Node<Token<'a>>,
 }
 
-pub type ParserResult<'a> = Result<Node<ast::Expr<'a>>, Report<'a>>;
+pub type ParserResult<'a> = Result<Node<ast::Expr<'a>>, Reports<'a>>;
 
 impl<'a> Parser<'a> {
     pub fn parse(str: &'a str, fid: FileId) -> ParserResult<'a> {
@@ -121,12 +108,13 @@ impl<'a> Parser<'a> {
 
         let expr = parser.parse_expr();
         if parser.curr.0 != Token::Eof {
-            parser
-                .reports
-                .push(Node(ParseError::ExpectedEof(parser.curr.0), parser.curr.1));
+            parser.reports.emit(ExpectedEofError {
+                span: parser.curr.1,
+                token: parser.curr.0,
+            });
         }
 
-        if parser.reports.count_errors() == 0 {
+        if !parser.reports.has_errors() {
             return Ok(expr);
         }
 
@@ -155,7 +143,7 @@ impl<'a> Parser<'a> {
             let (tok, range) = self.lex.next_tok();
             let span = Span::new(range, self.fid);
             match tok {
-                Err(e) => self.reports.push(Node(ParseError::Lex(e), span)),
+                Err(e) => self.reports.emit(Node(e, span)),
                 Ok(Token::Comment(_)) => {}
                 Ok(tok) => {
                     self.curr = Node(tok, span);
@@ -184,8 +172,11 @@ impl<'a> Parser<'a> {
                             self.last.1,
                         );
                         if opening.0 != closing.0 {
-                            let err = ParseError::MismatchedDelim { opening, closing };
-                            self.reports.push(Node(err, self.last.1))
+                            self.reports.emit(MismatchedDelimError {
+                                span: self.last.1,
+                                opening,
+                                closing,
+                            })
                         }
                         return;
                     } else {
@@ -194,18 +185,20 @@ impl<'a> Parser<'a> {
                 }
                 Token::Eof => {
                     let closing = Node(opening.0, self.last.1);
-                    self.reports.push(Node(
-                        ParseError::UnclosedDelim { opening, closing },
-                        self.last.1,
-                    ));
+                    self.reports.emit(UnclosedDelimError {
+                        span: self.last.1,
+                        opening,
+                        closing,
+                    });
                     break;
                 }
                 token => {
                     if !error {
-                        self.reports.push(Node(
-                            ParseError::ExpectedClosingDelim(opening.0, token),
-                            self.last.1,
-                        ));
+                        self.reports.emit(ExpectedClosingDelimError {
+                            span: self.last.1,
+                            delim: opening.0,
+                            token,
+                        });
                         error = true;
                     }
                 }
@@ -402,11 +395,12 @@ impl<'a> Parser<'a> {
                     }
                     let expr = self.parse_expr();
                     match &expr.0 {
-                        ast::Expr::FuncApp { func, .. } => self
-                            .reports
-                            .push(Node(ParseError::FuncAppInList { func: func.1 }, expr.1)),
+                        ast::Expr::FuncApp { func, .. } => self.reports.emit(FuncAppInListError {
+                            span: expr.1,
+                            func: func.1,
+                        }),
                         ast::Expr::Lambda { .. } => {
-                            self.reports.push(Node(ParseError::FuncDefInList, expr.1))
+                            self.reports.emit(FuncDefInListError { span: expr.1 })
                         }
                         _ => {}
                     }
@@ -420,12 +414,20 @@ impl<'a> Parser<'a> {
             }
             Token::If => {
                 let cond = Box::new(self.parse_expr());
-                if !self.consume_if(Token::Then){
-                    todo!()
+                if !self.consume_if(Token::Then) {
+                    self.reports.emit(UnexpectedTokenExprError {
+                        span: self.curr.1,
+                        token: self.curr.0,
+                        expected: Some(Token::Then),
+                    });
                 }
                 let then_expr = Box::new(self.parse_expr());
-                if !self.consume_if(Token::Else){
-                    todo!()
+                if !self.consume_if(Token::Else) {
+                    self.reports.emit(UnexpectedTokenExprError {
+                        span: self.curr.1,
+                        token: self.curr.0,
+                        expected: Some(Token::Else),
+                    });
                 }
                 let else_expr = Box::new(self.parse_expr());
                 ast::Expr::IfThenElse {
@@ -439,8 +441,10 @@ impl<'a> Parser<'a> {
                 match num.parse() {
                     Ok(ok) => ast::Num::Float(ok),
                     Err(err) => {
-                        self.reports
-                            .push(Node(ParseError::FloatErr(err), self.last.1));
+                        self.reports.emit(FloatError {
+                            span: self.last.1,
+                            err,
+                        });
                         ast::Num::Float(0.0)
                     }
                 }
@@ -448,16 +452,21 @@ impl<'a> Parser<'a> {
                 match num.parse() {
                     Ok(ok) => ast::Num::Int(ok),
                     Err(err) => {
-                        self.reports
-                            .push(Node(ParseError::IntErr(err), self.last.1));
+                        self.reports.emit(IntError {
+                            span: self.last.1,
+                            err,
+                        });
                         ast::Num::Int(0)
                     }
                 }
             }),
             Token::String(str) => ast::Expr::Str(str),
             token => {
-                self.reports
-                    .push(Node(ParseError::UnexpectedTokenExpr(token), self.last.1));
+                self.reports.emit(UnexpectedTokenExprError {
+                    span: self.last.1,
+                    token,
+                    expected: None,
+                });
                 ast::Expr::Ident("<ERROR>")
             }
         };
@@ -490,8 +499,11 @@ impl<'a> Parser<'a> {
                     ast::AttrPathPart::Str(str)
                 }
                 token => {
-                    let err = ParseError::UnexpectedTokenAttrPath(token);
-                    self.reports.push(Node(err, self.curr.1));
+                    let err = UnexpectedTokenAttrPathError {
+                        span: self.curr.1,
+                        token,
+                    };
+                    self.reports.emit(err);
                     break;
                 }
             };
