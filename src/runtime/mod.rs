@@ -1,22 +1,18 @@
 pub mod eval;
 pub mod scope;
 mod value;
+pub mod trace;
 
 pub use value::*;
 
 use crate::{
-    bytecode::Program,
-    files::Files,
-    mir::lowerer::MirLowerer,
-    parse::Parser,
-    report::Reports,
-    runtime::{eval::Evaluator, scope::Scope},
+    bytecode::Program, files::Files, mir::lowerer::MirLowerer, parse::Parser, report::Reports, runtime::{eval::Evaluator, scope::Scope, trace::ErrorTrace},
 };
 
 #[derive(Debug)]
 pub struct Runtime<'a> {
-    loader: &'a Files,
-    program: Program,
+    pub loader: &'a Files,
+    pub program: Program,
     default_scope: Scope,
 }
 
@@ -46,11 +42,11 @@ impl<'a> Runtime<'a> {
         Ok(expr)
     }
 
-    pub fn eval(&mut self, lazy: LazyValue) -> Value {
-        Evaluator::eval(self, lazy, false).unwrap()
+    pub fn eval(&mut self, lazy: LazyValue) -> Result<Value, ErrorTrace<'a>> {
+        Evaluator::eval(self, lazy, false)
     }
 
-    pub fn deep_eval(&mut self, lazy: LazyValue) -> Value {
-        Evaluator::eval(self, lazy, true).unwrap()
+    pub fn deep_eval(&mut self, lazy: LazyValue) -> Result<Value, ErrorTrace<'a>> {
+        Evaluator::eval(self, lazy, true)
     }
 }

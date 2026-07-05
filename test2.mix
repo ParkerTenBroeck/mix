@@ -1,17 +1,14 @@
-if true then 
-
 {
-    beep = inc (inc 1),
-    list = [ (func: 12), (func 12) ],
+    /*
+    list = [ 1+2, "heelo" ],
     meow.beep = "nya",
     meow.bop = "nya",
+    
     wow = {
         y = x+1,
         z = y+2,
         x = 1,
     },
-    inc = x:x+1,
     value = 12.2,
+    */
 }
-
- else [(43 meow)]

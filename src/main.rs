@@ -27,6 +27,9 @@ fn main() {
     };
     println!("{runtime:#?}");
     println!("{res:#?}");
-    let res = runtime.eval(res);
-    println!("{res:#?}");
+    let res = runtime.deep_eval(res);
+    match res{
+        Ok(ok) => println!("{ok:#?}"),
+        Err(trace) => println!("{}", trace.render(&runtime)),
+    }
 }

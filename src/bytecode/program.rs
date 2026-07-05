@@ -9,7 +9,7 @@ use crate::{
     mir::ast,
 };
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Trace)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Trace, PartialOrd, Ord)]
 pub struct CodePos(usize);
 impl CodePos {
     pub(crate) fn default() -> CodePos {
@@ -47,7 +47,8 @@ pub struct Lambda {
 
 #[derive(Debug)]
 pub struct Expr {
-    pub code: CodePos,
+    pub start: CodePos,
+    pub end: CodePos,
     pub span: Span,
 }
 
@@ -72,6 +73,10 @@ impl Program {
     pub fn get_str(&self, str: StrId) -> &str {
         self.strings.get(str.0.get() - 1).unwrap()
     }
+
+    pub fn find_pos(&self, pos: CodePos) -> Span {
+        self.expressions.iter().find(|expr| (expr.start..=expr.end).contains(&pos)).unwrap().span
+    }
 }
 
 impl ProgramBuilder for Program {
@@ -87,15 +92,16 @@ impl ProgramBuilder for Program {
 
         let built_code = builder.finish();
 
-        let code = CodePos(self.code.len());
-        self.expressions.push(Expr { code, span });
+        let start = CodePos(self.code.len());
+        let end = CodePos(self.code.len() + built_code.len());
+        self.expressions.push(Expr { start, end, span });
         let expr_id = ExprId(NonZeroUsize::new(self.expressions.len()).unwrap());
 
         for op in built_code {
             self.code.push(op);
         }
 
-        (expr_id, code)
+        (expr_id, start)
     }
 
     fn emit_lambda(
