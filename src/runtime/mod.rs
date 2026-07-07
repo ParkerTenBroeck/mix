@@ -1,12 +1,22 @@
 pub mod eval;
+pub mod pretty;
 pub mod scope;
-mod value;
+pub mod thunk;
 pub mod trace;
-
-pub use value::*;
+pub mod value;
 
 use crate::{
-    bytecode::Program, files::Files, mir::lowerer::MirLowerer, parse::Parser, report::Reports, runtime::{eval::Evaluator, scope::Scope, trace::ErrorTrace},
+    bytecode::Program,
+    files::Files,
+    mir::lowerer::MirLowerer,
+    parse::Parser,
+    report::Reports,
+    runtime::{
+        eval::Evaluator,
+        scope::Scope,
+        trace::ErrorTrace,
+        value::{LazyValue, Value},
+    },
 };
 
 #[derive(Debug)]
@@ -48,5 +58,13 @@ impl<'a> Runtime<'a> {
 
     pub fn deep_eval(&mut self, lazy: LazyValue) -> Result<Value, ErrorTrace<'a>> {
         Evaluator::eval(self, lazy, true)
+    }
+
+    pub fn pretty_value<'rt>(&'rt self, value: &'rt Value) -> pretty::PrettyValue<'rt, 'a> {
+        pretty::PrettyValue::new(self, value)
+    }
+
+    pub fn pretty_lazy<'rt>(&'rt self, value: &'rt LazyValue) -> pretty::PrettyLazyValue<'rt, 'a> {
+        pretty::PrettyLazyValue::new(self, value)
     }
 }

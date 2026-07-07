@@ -1,6 +1,6 @@
 use dumpster::Trace;
 
-use crate::runtime::{AttrSet, LazyValue};
+use crate::runtime::{LazyValue, value::AttrSet};
 
 #[derive(Clone, Default, Debug, Trace)]
 pub struct Scope {

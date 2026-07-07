@@ -1,33 +1,52 @@
 use super::trace::*;
-use dumpster::{unsync::Gc, Trace};
-use std::{borrow::Cow, cell::RefCell};
+use dumpster::Trace;
+use std::borrow::Cow;
 
 use crate::{
     bytecode::{CodeLocOffset, CodePos, OpCode},
-    runtime::{scope::Scope, AttrSet, Lambda, LazyExprState, LazyValue, List, Runtime, Value},
+    runtime::{
+        LazyValue, Runtime, Value,
+        scope::Scope,
+        thunk::{self, Thunk, ThunkEvalErr},
+        value::{AttrSet, Lambda, List},
+    },
 };
 
-#[derive(Trace)]
-pub enum LazyUpdate {
-    None,
-    Eval(Gc<RefCell<LazyExprState>>),
-    Rec(Gc<RefCell<LazyExprState>>),
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FrameKind {
+    Function,
+    ThunkEval,
+    ThunkEvalDeep,
+    ThunkEvalDeepRoot,
 }
 
 #[derive(Debug)]
 pub enum EvalError<'a> {
     Custom(Cow<'a, str>),
+    ThunkEval(ThunkEvalErr),
     ByteCode(&'static str),
+}
+
+pub struct Frame {
+    pub pos: CodePos,
+    pub scope: Scope,
+    pub kind: FrameKind,
+}
+
+impl Frame {
+    pub fn new(pos: CodePos, scope: Scope, kind: FrameKind) -> Self {
+        Self { pos, scope, kind }
+    }
 }
 
 pub struct Evaluator<'a, 'b> {
     pub runtime: &'b Runtime<'a>,
 
     pub value_stack: Vec<Value>,
-    pub call_stack: Vec<(CodePos, Scope, LazyUpdate)>,
+    pub thunk_eval_stack: Vec<Thunk>,
 
-    pub pos: CodePos,
-    pub scope: Scope,
+    pub frame_stack: Vec<Frame>,
+    pub curr_frame: Frame,
 }
 
 impl<'a, 'b> Evaluator<'a, 'b> {
@@ -36,22 +55,27 @@ impl<'a, 'b> Evaluator<'a, 'b> {
         lazy: LazyValue,
         recursive: bool,
     ) -> Result<Value, ErrorTrace<'a>> {
-        let state = match lazy{
-            LazyValue::Evaluated(value) => return Ok(value),
-            LazyValue::Unevaluated(gc) => gc,
+        let (pos, scope, thunk) = match lazy.try_into_value() {
+            Ok(value) => return Ok(value),
+            Err(thunk) => {
+                let (pos, scope) = thunk.eval_begin().map_err(EvalError::ThunkEval).unwrap();
+                (pos, scope, thunk)
+            }
         };
-        let mut state = state.borrow_mut();
+        let frame_kind = if recursive {
+            FrameKind::ThunkEvalDeepRoot
+        } else {
+            FrameKind::ThunkEval
+        };
+
         let mut eval = Self {
             runtime,
-            call_stack: Default::default(),
+            thunk_eval_stack: vec![thunk],
+            frame_stack: Default::default(),
             value_stack: Default::default(),
-            pos: CodePos::default(),
-            scope: Default::default(),
+            curr_frame: Frame::new(pos, scope, frame_kind),
         };
-        let res = (|| {
-            eval.eval_lazy(lazy, recursive)?;
-            eval.run_loop()
-        })();
+        let res = eval.run_loop();
         res.map_err(|kind| ErrorTrace::build(&eval, kind))
     }
 
@@ -60,69 +84,65 @@ impl<'a, 'b> Evaluator<'a, 'b> {
         Ok(())
     }
 
+    fn push_thunk_eval(&mut self, thunk: Thunk) -> Result<(), EvalError<'a>> {
+        self.thunk_eval_stack.push(thunk);
+        Ok(())
+    }
+
+    fn pop_thunk_eval(&mut self) -> Result<Thunk, EvalError<'a>> {
+        self.thunk_eval_stack
+            .pop()
+            .ok_or_else(|| EvalError::Custom("missing thunk".into()))
+    }
+
     fn pop_value(&mut self) -> Result<Value, EvalError<'a>> {
         self.value_stack
             .pop()
             .ok_or(EvalError::ByteCode("value stack"))
     }
 
-    fn push_call_stack(
-        &mut self,
-        pos: CodePos,
-        scope: Scope,
-        lazy: LazyUpdate,
-    ) -> Result<(), EvalError<'a>> {
-        self.call_stack.push((self.pos, self.scope.clone(), lazy));
-        self.pos = pos;
-        self.scope = scope;
+    fn push_frame(&mut self, mut frame: Frame) -> Result<(), EvalError<'a>> {
+        std::mem::swap(&mut self.curr_frame, &mut frame);
+        self.frame_stack.push(frame);
         Ok(())
     }
 
-    fn pop_call(&mut self) -> Result<(CodePos, Scope, LazyUpdate), EvalError<'a>> {
-        self.call_stack
+    fn pop_frame(&mut self) -> Result<Frame, EvalError<'a>> {
+        self.frame_stack
             .pop()
             .ok_or(EvalError::ByteCode("call stack"))
     }
 
-    fn next_op(&mut self) -> OpCode {
-        let (op, pos) = self.runtime.program.get(self.pos);
-        self.pos = pos;
-        op
+    fn next_op(&mut self) -> Result<OpCode, EvalError<'a>> {
+        let Some((op, pos)) = self.runtime.program.get(self.curr_frame.pos) else {
+            return Err(EvalError::Custom("overran".into()));
+        };
+        self.curr_frame.pos = pos;
+        Ok(op)
     }
 
     fn branch(&mut self, off: CodeLocOffset) {
-        self.pos = self.pos + off;
+        self.curr_frame.pos = self.curr_frame.pos + off;
     }
 
     fn goto(&mut self, pos: CodePos) {
-        self.pos = pos;
+        self.curr_frame.pos = pos;
     }
 
-    fn eval_lazy(&mut self, lazy: LazyValue, rec: bool) -> Result<(), EvalError<'a>> {
-        match lazy {
-            LazyValue::Unevaluated(gc) => {
-                let mut state = gc.borrow_mut();
-                match &*state {
-                    super::LazyExprState::Constructing(_) => todo!(),
-                    super::LazyExprState::Evaluating => Err(EvalError::Custom("infinite recursion".into())),
-
-                    super::LazyExprState::Evaluated(value) => self.push_value(value.clone()),
-
-                    super::LazyExprState::Unevaluated(code_loc, scope) => {
-                        let kind = if rec {
-                            LazyUpdate::Rec(gc.clone())
-                        } else {
-                            LazyUpdate::Eval(gc.clone())
-                        };
-                        self.push_call_stack(*code_loc, scope.clone(), kind)?;
-                        *state = super::LazyExprState::Evaluating;
-                        Ok(())
-                    }
-                }
-            }
-            LazyValue::Evaluated(value) => self.push_value(value),
-        }
-    }
+    // fn eval_lazy(&mut self, lazy: LazyValue, recursive: bool) -> Result<(), EvalError<'a>> {
+    //     match lazy.try_into_value() {
+    //         Ok(value) => self.push_value(value),
+    //         Err(thunk) => {
+    //             let kind = if recursive {
+    //                 ThunkEvalKind::EvalDeep
+    //             } else {
+    //                 ThunkEvalKind::Eval
+    //             };
+    //             self.thunk_eval_stack.push((thunk, kind));
+    //             Ok(())
+    //         }
+    //     }
+    // }
 
     fn run_loop(&mut self) -> Result<Value, EvalError<'a>> {
         use crate::bytecode::OpCode;
@@ -175,7 +195,7 @@ impl<'a, 'b> Evaluator<'a, 'b> {
             }};
         }
         loop {
-            match self.next_op() {
+            match self.next_op()? {
                 OpCode::Add => {
                     let lhs = self.pop_value()?;
                     let rhs = self.pop_value()?;
@@ -264,9 +284,9 @@ impl<'a, 'b> Evaluator<'a, 'b> {
                         todo!()
                     };
                     let scope = if op == OpCode::FinalizeAttrSetRec {
-                        Scope::new(attrset.clone(), self.scope.clone())
+                        Scope::new(attrset.clone(), self.curr_frame.scope.clone())
                     } else {
-                        self.scope.clone()
+                        self.curr_frame.scope.clone()
                     };
 
                     for element in attrset.values() {
@@ -283,16 +303,16 @@ impl<'a, 'b> Evaluator<'a, 'b> {
                         todo!()
                     };
                     list.get_mut()
-                        .push_back(LazyValue::uneval(expr, self.scope.clone()));
+                        .push_back(LazyValue::uneval(expr, self.curr_frame.scope.clone()));
                     self.push_value(Value::List(list))?;
                 }
                 OpCode::Apply(loc) => {
-                    self.push_call_stack(loc, self.scope.clone(), LazyUpdate::None)?;
+                    // self.push_frame(loc, self.curr_frame.scope.clone(), FrameKind::Function)?;
                 }
 
                 OpCode::LoadLambda(lambda_id) => {
                     let lambda = Lambda::Lambda {
-                        scope: self.scope.clone(),
+                        scope: self.curr_frame.scope.clone(),
                         lambda: lambda_id,
                     };
                     self.push_value(Value::Lambda(lambda))?;
@@ -308,13 +328,13 @@ impl<'a, 'b> Evaluator<'a, 'b> {
                     let Value::AttrSet(attrset) = self.pop_value()? else {
                         todo!()
                     };
-                    self.scope = Scope::new(attrset, self.scope.clone());
+                    self.curr_frame.scope = Scope::new(attrset, self.curr_frame.scope.clone());
                 }
                 OpCode::LastScope => {
-                    if let Some(previous) = self.scope.prev.clone() {
-                        self.scope = *previous;
+                    if let Some(previous) = self.curr_frame.scope.prev.clone() {
+                        self.curr_frame.scope = *previous;
                     } else {
-                        self.scope = Scope::bottom(AttrSet::default());
+                        self.curr_frame.scope = Scope::bottom(AttrSet::default());
                     }
                 }
                 OpCode::HasAttr => todo!(),
@@ -328,7 +348,13 @@ impl<'a, 'b> Evaluator<'a, 'b> {
                     let Some(lazy) = attrset.get(&name) else {
                         break Err(EvalError::Custom("meoew".into()));
                     };
-                    self.eval_lazy(lazy.clone(), false)?;
+                    match lazy.try_get_value(){
+                        Ok(ok) => self.push_value(ok)?,
+                        Err(thunk) => {
+                            let (pos, scope) = thunk.eval_begin().map_err(EvalError::ThunkEval)?;
+                            self.push_frame(Frame::new(pos, scope, FrameKind::ThunkEval))?;
+                        },
+                    }
                 }
                 OpCode::GetAttrOr(expr_id) => todo!(),
 
@@ -336,55 +362,86 @@ impl<'a, 'b> Evaluator<'a, 'b> {
                     let Value::String(name) = self.pop_value()? else {
                         todo!()
                     };
-                    let Some(lazy) = self.scope.resolve(&name) else {
-                        return Err(EvalError::Custom(format!("failed to resolve {name:?}").into()))
+                    let Some(lazy) = self.curr_frame.scope.resolve(&name) else {
+                        return Err(EvalError::Custom(
+                            format!("failed to resolve {name:?}").into(),
+                        ));
                     };
-                    self.eval_lazy(lazy.clone(), false)?;
+                    match lazy.try_get_value(){
+                        Ok(ok) => self.push_value(ok)?,
+                        Err(thunk) => {
+                            let (pos, scope) = thunk.eval_begin().map_err(EvalError::ThunkEval)?;
+                            self.push_frame(Frame::new(pos, scope, FrameKind::ThunkEval))?;
+                        },
+                    }
                 }
 
                 OpCode::Ret => {
-                    let (pos, scope, lazy) = self.pop_call()?;
-                    match lazy {
-                        LazyUpdate::None => {}
-                        LazyUpdate::Eval(state) => {
-                            let res = self.pop_value()?;
-                            let mut state = state.borrow_mut();
-                            match &*state {
-                                LazyExprState::Evaluating => {}
-                                _ => todo!(),
-                            }
-                            *state = LazyExprState::Evaluated(res.clone());
-                            self.push_value(res)?;
-                        }
-                        LazyUpdate::Rec(state) => {
-                            let res = self.pop_value()?;
-                            let mut state = state.borrow_mut();
-                            match &*state {
-                                LazyExprState::Evaluating => {}
-                                _ => todo!(),
-                            }
-                            *state = LazyExprState::Evaluated(res.clone());
+                    let ret_frame_kind = self.curr_frame.kind;
 
-                            match &res {
+                    if !self.frame_stack.is_empty() {
+                        self.pop_frame()?;
+                    }
+
+                    let ret = self.pop_value()?;
+                    if matches!(
+                        ret_frame_kind,
+                        FrameKind::ThunkEval
+                            | FrameKind::ThunkEvalDeep
+                            | FrameKind::ThunkEvalDeepRoot
+                    ) {
+                        let thunk = self.pop_thunk_eval()?;
+                        thunk.eval_end(ret.clone()).unwrap();
+
+                        if matches!(
+                            ret_frame_kind,
+                            FrameKind::ThunkEvalDeep | FrameKind::ThunkEvalDeepRoot
+                        ) {
+                            match &ret {
                                 Value::AttrSet(attrs) => {
                                     for lazy in attrs.values() {
-                                        self.eval_lazy(lazy.clone(), true)?;
+                                        if let Err(thunk) = lazy.try_get_value() {
+                                            self.push_thunk_eval(thunk)?;
+                                        }
                                     }
                                 }
                                 Value::List(list) => {
                                     for lazy in list.iter() {
-                                        self.eval_lazy(lazy.clone(), true)?;
+                                        if let Err(thunk) = lazy.try_get_value() {
+                                            self.push_thunk_eval(thunk)?;
+                                        }
                                     }
                                 }
                                 _ => {}
                             }
+
+                            while let Some(thunk) = self.thunk_eval_stack.last() {
+                                if thunk.get_value().is_some() {
+                                    self.thunk_eval_stack.pop();
+                                    continue;
+                                }
+                                let (pos, scope) = thunk.eval_begin().map_err(EvalError::ThunkEval)?;
+                                let kind = match ret_frame_kind {
+                                    FrameKind::Function => todo!(),
+                                    FrameKind::ThunkEval => todo!(),
+                                    FrameKind::ThunkEvalDeep => FrameKind::ThunkEvalDeep,
+                                    FrameKind::ThunkEvalDeepRoot => FrameKind::ThunkEvalDeep,
+                                };
+                                self.push_frame(Frame::new(pos, scope, kind))?;
+                                break;
+                            }
+                        }
+                        if matches!(
+                            ret_frame_kind,
+                            FrameKind::ThunkEval | FrameKind::ThunkEvalDeepRoot
+                        ) {
+                            self.push_value(ret)?;
                         }
                     }
-                    if self.call_stack.is_empty() {
+
+
+                    if self.frame_stack.is_empty() {
                         break self.pop_value();
-                    } else {
-                        self.goto(pos);
-                        self.scope = scope;
                     }
                 }
             }

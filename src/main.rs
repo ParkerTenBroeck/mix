@@ -1,6 +1,6 @@
 use mix::{
     files::Files,
-    runtime::{Runtime, Value, scope::ScopeBuilder},
+    runtime::{Runtime, scope::ScopeBuilder, value::Value},
 };
 
 fn main() {
@@ -25,11 +25,10 @@ fn main() {
             return;
         }
     };
-    println!("{runtime:#?}");
-    println!("{res:#?}");
+    println!("{}", runtime.pretty_lazy(&res));
     let res = runtime.deep_eval(res);
-    match res{
-        Ok(ok) => println!("{ok:#?}"),
+    match res {
+        Ok(ok) => println!("{}", runtime.pretty_value(&ok)),
         Err(trace) => println!("{}", trace.render(&runtime)),
     }
 }

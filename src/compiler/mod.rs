@@ -133,7 +133,7 @@ impl Compiler {
             }
             ast::Expr::AccessAttr { expr, path, or } => {
                 self.compile_expr(builder, expr);
-                for part in &path.0.parts{
+                for part in &path.0.parts {
                     self.compile_attr_part(builder, part);
                     builder.emit(OpCode::GetAttr);
                 }

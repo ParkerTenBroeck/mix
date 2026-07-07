@@ -1,10 +1,14 @@
 use crate::{
-    files::Span, runtime::{Runtime, eval::{EvalError, Evaluator}},
+    files::Span,
+    runtime::{
+        Runtime,
+        eval::{EvalError, Evaluator},
+    },
 };
 
 pub struct ErrorTrace<'a> {
     pub kind: EvalError<'a>,
-    pub stack: Vec<Frame>,
+    pub stack: Vec<FrameInfo>,
 }
 
 impl<'a> ErrorTrace<'a> {
@@ -16,6 +20,11 @@ impl<'a> ErrorTrace<'a> {
         let title = match &self.kind {
             EvalError::Custom(message) => message.to_string(),
             EvalError::ByteCode(message) => format!("bytecode error: {message}"),
+            EvalError::ThunkEval(thunk_eval_err) => match thunk_eval_err {
+                crate::runtime::thunk::ThunkEvalErr::InfiniteRec => "infinite recursion",
+                crate::runtime::thunk::ThunkEvalErr::NotConstructed => "trying to access partially constructed value.. this indicates an error in the compiler/bytecode/runtime",
+                crate::runtime::thunk::ThunkEvalErr::AlreadyEvaluated => "trying to re-evaluate already evaluated thunk.. this indicates an error in the compiler/bytecode/runtime",
+            }.into(),
         };
 
         let mut frames = self.stack.iter().rev();
@@ -36,47 +45,41 @@ impl<'a> ErrorTrace<'a> {
         )];
 
         groups.extend(frames.map(|frame| {
-            let title = match frame.kind{
+            let title = match frame.kind {
                 FrameKind::Fn => "called from here",
                 FrameKind::LazyEval => "while evaluating this expression",
             };
-            let label = match frame.kind{
+            let label = match frame.kind {
                 FrameKind::Fn => "function call",
                 FrameKind::LazyEval => "lazy value forced here",
             };
-            render_frame(
-                runtime,
-                frame,
-                Level::ERROR.secondary_title(title),
-                label,
-            )
+            render_frame(runtime, frame, Level::ERROR.secondary_title(title), label)
         }));
 
         renderer.render(&groups)
     }
-    
-    pub fn build(eval: &super::eval::Evaluator<'a, '_>, kind: EvalError<'a>)  -> Self {
-        Self { kind, stack: Self::build_trace(eval) }
+
+    pub fn build(eval: &super::eval::Evaluator<'a, '_>, kind: EvalError<'a>) -> Self {
+        Self {
+            kind,
+            stack: Self::build_trace(eval),
+        }
     }
 
-    fn build_trace(eval: &Evaluator<'_, '_>) -> Vec<Frame> {
-        let mut stack: Vec<Frame> = eval
-            .call_stack
+    fn build_trace(eval: &Evaluator<'_, '_>) -> Vec<FrameInfo> {
+        let mut stack: Vec<FrameInfo> = eval
+            .frame_stack
             .iter()
-            .map(|(pos, _, kind)| Frame {
-                span: eval.runtime.program.find_pos(*pos),
+            .map(|frame| FrameInfo {
+                span: eval.runtime.program.find_pos(*&frame.pos),
                 kind: FrameKind::Fn,
             })
             .collect();
 
-        // stack.push(Frame {
-        //     span: eval.runtime.program.find_pos(self.pos),
-        //     is_fn: self
-        //         .call_stack
-        //         .last()
-        //         .is_some_and(|(_, _, kind)| matches!(kind, LazyUpdate::None)),
-        //     kind: todo!(),
-        // });
+        stack.push(FrameInfo {
+            span: eval.runtime.program.find_pos(eval.curr_frame.pos),
+            kind: FrameKind::Fn,
+        });
 
         stack
     }
@@ -84,7 +87,7 @@ impl<'a> ErrorTrace<'a> {
 
 fn render_frame<'a>(
     runtime: &Runtime<'a>,
-    frame: &Frame,
+    frame: &FrameInfo,
     title: annotate_snippets::Title<'a>,
     label: &'static str,
 ) -> annotate_snippets::Group<'a> {
@@ -101,13 +104,12 @@ fn render_frame<'a>(
     annotate_snippets::Group::with_title(title).element(snippet)
 }
 
-
-pub enum FrameKind{
+pub enum FrameKind {
     Fn,
     LazyEval,
 }
 
-pub struct Frame {
+pub struct FrameInfo {
     pub span: Span,
     pub kind: FrameKind,
 }

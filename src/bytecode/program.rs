@@ -11,11 +11,6 @@ use crate::{
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Trace, PartialOrd, Ord)]
 pub struct CodePos(usize);
-impl CodePos {
-    pub(crate) fn default() -> CodePos {
-        CodePos(0)
-    }
-}
 
 impl std::ops::Add<CodeLocOffset> for CodePos {
     type Output = CodePos;
@@ -66,16 +61,25 @@ impl Program {
         compiler.compile_top_level(self, expr)
     }
 
-    pub fn get(&self, loc: CodePos) -> (OpCode, CodePos) {
-        (self.code[loc.0], CodePos(loc.0 + 1))
+    pub fn get(&self, loc: CodePos) -> Option<(OpCode, CodePos)> {
+        Some((*self.code.get(loc.0)?, CodePos(loc.0 + 1)))
     }
 
     pub fn get_str(&self, str: StrId) -> &str {
         self.strings.get(str.0.get() - 1).unwrap()
     }
 
+    pub fn get_lambda(&self, lambda: LambdaId) -> Option<&Lambda> {
+        self.lambdas.get(lambda.0.get() - 1)
+    }
+
     pub fn find_pos(&self, pos: CodePos) -> Span {
-        self.expressions.iter().find(|expr| (expr.start..=expr.end).contains(&pos)).unwrap().span
+        self.expressions
+            .iter()
+            .filter(|expr| (expr.start..expr.end).contains(&pos))
+            .min_by_key(|expr| expr.end.0 - expr.start.0)
+            .unwrap_or(self.expressions.last().unwrap())
+            .span
     }
 }
 

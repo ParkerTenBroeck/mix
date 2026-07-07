@@ -1,5 +1,4 @@
 use std::{
-    cell::RefCell,
     collections::{HashMap, VecDeque},
     ops::Deref,
     path::PathBuf,
@@ -9,7 +8,7 @@ use dumpster::{Trace, unsync::Gc};
 
 use crate::{
     bytecode::{CodePos, LambdaId},
-    runtime::scope::Scope,
+    runtime::{scope::Scope, thunk::Thunk},
 };
 
 #[derive(Clone, Debug, Trace)]
@@ -74,77 +73,65 @@ pub enum Lambda {
     // NativeLambda(NativeLambda),
 }
 
-#[derive(Clone, Trace)]
+#[derive(Clone, Debug, Trace)]
 pub enum LazyValue {
-    Unevaluated(Gc<RefCell<LazyExprState>>),
-    Evaluated(Value),
+    Thunk(Thunk),
+    Value(Value),
 }
 
 impl<T: Into<Value>> From<T> for LazyValue {
     fn from(value: T) -> Self {
-        Self::Evaluated(value.into())
-    }
-}
-
-impl std::fmt::Debug for LazyValue {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Unevaluated(arg0) => {
-                if let Ok(borrow) = arg0.try_borrow() {
-                    f.debug_tuple("Unevaluated").field(&*borrow).finish()
-                } else {
-                    f.debug_tuple("Unevaluated").finish()
-                }
-            }
-            Self::Evaluated(arg0) => f.debug_tuple("Evaluated").field(arg0).finish(),
-        }
+        Self::Value(value.into())
     }
 }
 
 impl LazyValue {
     pub fn construct_begin(code: CodePos) -> Self {
-        Self::Unevaluated(Gc::new(RefCell::new(LazyExprState::Constructing(code))))
+        Self::Thunk(Thunk::construct_begin(code))
     }
 
     pub fn construct_end(&self, scope: Scope) -> bool {
         match self {
-            LazyValue::Unevaluated(gc) => {
-                let mut inner = gc.borrow_mut();
-                match &*inner {
-                    LazyExprState::Constructing(code_loc) => {
-                        *inner = LazyExprState::Unevaluated(*code_loc, scope);
-                        true
-                    }
-                    _ => false,
-                }
-            }
+            LazyValue::Thunk(thunk) => thunk.construct_end(scope),
             _ => false,
         }
     }
 
-    pub fn uneval(code: CodePos, scope: Scope) -> Self {
-        Self::Unevaluated(Gc::new(RefCell::new(LazyExprState::Unevaluated(
-            code, scope,
-        ))))
-    }
-}
-
-#[derive(Clone, Trace)]
-pub enum LazyExprState {
-    Constructing(CodePos),
-    Unevaluated(CodePos, Scope),
-    Evaluating,
-    Evaluated(Value),
-}
-
-impl std::fmt::Debug for LazyExprState {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    pub fn try_get_value_mut(&mut self) -> Result<Value, Thunk> {
         match self {
-            Self::Constructing(arg0) => f.debug_tuple("Constructing").field(arg0).finish(),
-            Self::Unevaluated(arg0, _) => f.debug_tuple("Unevaluated").field(arg0).finish(),
-            Self::Evaluating => write!(f, "Evaluating"),
-            Self::Evaluated(arg0) => f.debug_tuple("Evaluated").field(arg0).finish(),
+            LazyValue::Thunk(thunk) => match thunk.get_value() {
+                Some(value) => {
+                    *self = LazyValue::Value(value.clone());
+                    Ok(value)
+                }
+                None => Err(thunk.clone()),
+            },
+            LazyValue::Value(value) => Ok(value.clone()),
         }
+    }
+
+    pub fn try_get_value(&self) -> Result<Value, Thunk> {
+        match self {
+            LazyValue::Thunk(thunk) => match thunk.get_value() {
+                Some(value) => Ok(value),
+                None => Err(thunk.clone()),
+            },
+            LazyValue::Value(value) => Ok(value.clone()),
+        }
+    }
+
+    pub fn try_into_value(self) -> Result<Value, Thunk> {
+        match self {
+            LazyValue::Thunk(thunk) => match thunk.get_value() {
+                Some(value) => Ok(value),
+                None => Err(thunk),
+            },
+            LazyValue::Value(value) => Ok(value),
+        }
+    }
+
+    pub fn uneval(code: CodePos, scope: Scope) -> Self {
+        Self::Thunk(Thunk::uneval(code, scope))
     }
 }
 
@@ -158,6 +145,10 @@ impl List {
         Self {
             inner: Gc::new(VecDeque::with_capacity(capacity)),
         }
+    }
+
+    pub fn id(&self) -> usize {
+        Gc::as_ptr(&self.inner) as *const () as usize
     }
 
     pub fn get_mut(&mut self) -> &mut VecDeque<LazyValue> {
@@ -179,6 +170,10 @@ pub struct AttrSet {
 }
 
 impl AttrSet {
+    pub fn id(&self) -> usize {
+        Gc::as_ptr(&self.inner) as *const () as usize
+    }
+
     pub fn get_mut(&mut self) -> &mut HashMap<String, LazyValue> {
         Gc::make_mut(&mut self.inner)
     }
