@@ -2,7 +2,7 @@ use crate::{
     files::Span,
     runtime::{
         Runtime,
-        eval::{EvalError, Evaluator},
+        eval::{EvalError, Evaluator, FrameKind as EvalFrameKind, PotentialFrame},
     },
 };
 
@@ -70,18 +70,30 @@ impl<'a> ErrorTrace<'a> {
         let mut stack: Vec<FrameInfo> = eval
             .frame_stack
             .iter()
-            .map(|frame| FrameInfo {
-                span: eval.runtime.program.find_pos(*&frame.pos),
-                kind: FrameKind::Fn,
+            .filter_map(|frame| match frame {
+                PotentialFrame::Realized(frame) => Some(FrameInfo {
+                    span: eval.runtime.program.find_pos(frame.pos),
+                    kind: map_frame_kind(&frame.kind),
+                }),
+                PotentialFrame::PotentialDeep(_) => None,
             })
             .collect();
 
         stack.push(FrameInfo {
             span: eval.runtime.program.find_pos(eval.curr_frame.pos),
-            kind: FrameKind::Fn,
+            kind: map_frame_kind(&eval.curr_frame.kind),
         });
 
         stack
+    }
+}
+
+fn map_frame_kind(kind: &EvalFrameKind) -> FrameKind {
+    match kind {
+        EvalFrameKind::Function => FrameKind::Fn,
+        EvalFrameKind::ThunkEval(_)
+        | EvalFrameKind::ThunkEvalDeep(_)
+        | EvalFrameKind::ThunkEvalDeepRoot(_) => FrameKind::LazyEval,
     }
 }
 

@@ -7,17 +7,17 @@ use crate::{
     runtime::{
         LazyValue, Runtime, Value,
         scope::Scope,
-        thunk::{self, Thunk, ThunkEvalErr},
+        thunk::{Thunk, ThunkEvalErr},
         value::{AttrSet, Lambda, List},
     },
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub enum FrameKind {
     Function,
-    ThunkEval,
-    ThunkEvalDeep,
-    ThunkEvalDeepRoot,
+    ThunkEval(Thunk),
+    ThunkEvalDeep(Thunk),
+    ThunkEvalDeepRoot(Thunk),
 }
 
 #[derive(Debug)]
@@ -27,6 +27,12 @@ pub enum EvalError<'a> {
     ByteCode(&'static str),
 }
 
+pub enum PotentialFrame {
+    Realized(Frame),
+    PotentialDeep(Thunk)
+}
+
+#[derive(Clone)]
 pub struct Frame {
     pub pos: CodePos,
     pub scope: Scope,
@@ -43,9 +49,8 @@ pub struct Evaluator<'a, 'b> {
     pub runtime: &'b Runtime<'a>,
 
     pub value_stack: Vec<Value>,
-    pub thunk_eval_stack: Vec<Thunk>,
 
-    pub frame_stack: Vec<Frame>,
+    pub frame_stack: Vec<PotentialFrame>,
     pub curr_frame: Frame,
 }
 
@@ -63,14 +68,13 @@ impl<'a, 'b> Evaluator<'a, 'b> {
             }
         };
         let frame_kind = if recursive {
-            FrameKind::ThunkEvalDeepRoot
+            FrameKind::ThunkEvalDeepRoot(thunk)
         } else {
-            FrameKind::ThunkEval
+            FrameKind::ThunkEval(thunk)
         };
 
         let mut eval = Self {
             runtime,
-            thunk_eval_stack: vec![thunk],
             frame_stack: Default::default(),
             value_stack: Default::default(),
             curr_frame: Frame::new(pos, scope, frame_kind),
@@ -84,17 +88,6 @@ impl<'a, 'b> Evaluator<'a, 'b> {
         Ok(())
     }
 
-    fn push_thunk_eval(&mut self, thunk: Thunk) -> Result<(), EvalError<'a>> {
-        self.thunk_eval_stack.push(thunk);
-        Ok(())
-    }
-
-    fn pop_thunk_eval(&mut self) -> Result<Thunk, EvalError<'a>> {
-        self.thunk_eval_stack
-            .pop()
-            .ok_or_else(|| EvalError::Custom("missing thunk".into()))
-    }
-
     fn pop_value(&mut self) -> Result<Value, EvalError<'a>> {
         self.value_stack
             .pop()
@@ -103,11 +96,11 @@ impl<'a, 'b> Evaluator<'a, 'b> {
 
     fn push_frame(&mut self, mut frame: Frame) -> Result<(), EvalError<'a>> {
         std::mem::swap(&mut self.curr_frame, &mut frame);
-        self.frame_stack.push(frame);
+        self.frame_stack.push(PotentialFrame::Realized(frame));
         Ok(())
     }
 
-    fn pop_frame(&mut self) -> Result<Frame, EvalError<'a>> {
+    fn pop_frame(&mut self) -> Result<PotentialFrame, EvalError<'a>> {
         self.frame_stack
             .pop()
             .ok_or(EvalError::ByteCode("call stack"))
@@ -124,25 +117,6 @@ impl<'a, 'b> Evaluator<'a, 'b> {
     fn branch(&mut self, off: CodeLocOffset) {
         self.curr_frame.pos = self.curr_frame.pos + off;
     }
-
-    fn goto(&mut self, pos: CodePos) {
-        self.curr_frame.pos = pos;
-    }
-
-    // fn eval_lazy(&mut self, lazy: LazyValue, recursive: bool) -> Result<(), EvalError<'a>> {
-    //     match lazy.try_into_value() {
-    //         Ok(value) => self.push_value(value),
-    //         Err(thunk) => {
-    //             let kind = if recursive {
-    //                 ThunkEvalKind::EvalDeep
-    //             } else {
-    //                 ThunkEvalKind::Eval
-    //             };
-    //             self.thunk_eval_stack.push((thunk, kind));
-    //             Ok(())
-    //         }
-    //     }
-    // }
 
     fn run_loop(&mut self) -> Result<Value, EvalError<'a>> {
         use crate::bytecode::OpCode;
@@ -194,7 +168,7 @@ impl<'a, 'b> Evaluator<'a, 'b> {
                 self.push_value(result)?;
             }};
         }
-        loop {
+        'main_loop: loop {
             match self.next_op()? {
                 OpCode::Add => {
                     let lhs = self.pop_value()?;
@@ -352,7 +326,8 @@ impl<'a, 'b> Evaluator<'a, 'b> {
                         Ok(ok) => self.push_value(ok)?,
                         Err(thunk) => {
                             let (pos, scope) = thunk.eval_begin().map_err(EvalError::ThunkEval)?;
-                            self.push_frame(Frame::new(pos, scope, FrameKind::ThunkEval))?;
+                            self.push_frame(self.curr_frame.clone())?;
+                            self.curr_frame = Frame::new(pos, scope, FrameKind::ThunkEval(thunk));
                         },
                     }
                 }
@@ -371,74 +346,72 @@ impl<'a, 'b> Evaluator<'a, 'b> {
                         Ok(ok) => self.push_value(ok)?,
                         Err(thunk) => {
                             let (pos, scope) = thunk.eval_begin().map_err(EvalError::ThunkEval)?;
-                            self.push_frame(Frame::new(pos, scope, FrameKind::ThunkEval))?;
+                            self.push_frame(self.curr_frame.clone())?;
+                            self.curr_frame = Frame::new(pos, scope, FrameKind::ThunkEval(thunk));
                         },
                     }
                 }
 
                 OpCode::Ret => {
-                    let ret_frame_kind = self.curr_frame.kind;
+                    let ret = self.pop_value()?;
 
-                    if !self.frame_stack.is_empty() {
-                        self.pop_frame()?;
+                    match &self.curr_frame.kind {
+                        FrameKind::ThunkEval(thunk) 
+                        | FrameKind::ThunkEvalDeep(thunk)
+                        | FrameKind::ThunkEvalDeepRoot(thunk) => {
+                            thunk.eval_end(ret.clone()).unwrap();
+                        },
+                        _ => {}
                     }
 
-                    let ret = self.pop_value()?;
-                    if matches!(
-                        ret_frame_kind,
-                        FrameKind::ThunkEval
-                            | FrameKind::ThunkEvalDeep
-                            | FrameKind::ThunkEvalDeepRoot
-                    ) {
-                        let thunk = self.pop_thunk_eval()?;
-                        thunk.eval_end(ret.clone()).unwrap();
-
-                        if matches!(
-                            ret_frame_kind,
-                            FrameKind::ThunkEvalDeep | FrameKind::ThunkEvalDeepRoot
-                        ) {
+                    match &self.curr_frame.kind {
+                        | FrameKind::ThunkEvalDeep(_)
+                        | FrameKind::ThunkEvalDeepRoot(_) => {
                             match &ret {
                                 Value::AttrSet(attrs) => {
                                     for lazy in attrs.values() {
                                         if let Err(thunk) = lazy.try_get_value() {
-                                            self.push_thunk_eval(thunk)?;
+                                            self.frame_stack.push(PotentialFrame::PotentialDeep(thunk));
                                         }
                                     }
                                 }
                                 Value::List(list) => {
                                     for lazy in list.iter() {
                                         if let Err(thunk) = lazy.try_get_value() {
-                                            self.push_thunk_eval(thunk)?;
+                                            self.frame_stack.push(PotentialFrame::PotentialDeep(thunk));
                                         }
                                     }
                                 }
                                 _ => {}
                             }
+                        },
+                        _ => {}
+                    }
 
-                            while let Some(thunk) = self.thunk_eval_stack.last() {
-                                if thunk.get_value().is_some() {
-                                    self.thunk_eval_stack.pop();
+                    match &self.curr_frame.kind {
+                        FrameKind::ThunkEval(_) 
+                        | FrameKind::ThunkEvalDeepRoot(_) => {
+                            self.push_value(ret)?;
+                        },
+                        _ => {}
+                    }
+
+                    while !self.frame_stack.is_empty() {
+                        match self.pop_frame()? {
+                            PotentialFrame::Realized(frame) => {
+                                self.curr_frame = frame;
+                                break;
+                            },
+                            PotentialFrame::PotentialDeep(thunk) => {
+                                if thunk.get_value().is_some(){
                                     continue;
                                 }
                                 let (pos, scope) = thunk.eval_begin().map_err(EvalError::ThunkEval)?;
-                                let kind = match ret_frame_kind {
-                                    FrameKind::Function => todo!(),
-                                    FrameKind::ThunkEval => todo!(),
-                                    FrameKind::ThunkEvalDeep => FrameKind::ThunkEvalDeep,
-                                    FrameKind::ThunkEvalDeepRoot => FrameKind::ThunkEvalDeep,
-                                };
-                                self.push_frame(Frame::new(pos, scope, kind))?;
-                                break;
-                            }
-                        }
-                        if matches!(
-                            ret_frame_kind,
-                            FrameKind::ThunkEval | FrameKind::ThunkEvalDeepRoot
-                        ) {
-                            self.push_value(ret)?;
+                                self.curr_frame = Frame::new(pos, scope, FrameKind::ThunkEvalDeep(thunk));
+                                continue 'main_loop;
+                            },
                         }
                     }
-
 
                     if self.frame_stack.is_empty() {
                         break self.pop_value();
