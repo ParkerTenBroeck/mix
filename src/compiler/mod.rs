@@ -32,7 +32,8 @@ impl Compiler {
 
         match ast_expr {
             ast::Expr::Lambda(lambda) => {
-                builder.emit_load_lambda(*span, |builder| {
+                let arg_name = lambda.arg.0.binding.map(|name|name.0);
+                builder.emit_load_lambda(*span, arg_name, |builder| {
                     //TODO how do I want to do argument stuff?
                     self.compile_expr(builder, &lambda.body);
                 });

@@ -50,6 +50,10 @@ impl Thunk {
         Self(Gc::new(RefCell::new(ThunkState::Constructing(pos))))
     }
 
+    pub fn uneval_with_scope(pos: CodePos, scope: Scope) -> Self{
+        Self(Gc::new(RefCell::new(ThunkState::Unevaluated(pos, scope))))
+    }
+
     pub fn construct_end(&self, scope: Scope) -> bool {
         let mut inner = self.0.borrow_mut();
         match &*inner {

@@ -1,4 +1,5 @@
 use mix::{
+    bytecode::PrettyProgram,
     files::Files,
     runtime::{Runtime, scope::ScopeBuilder, value::Value},
 };
@@ -13,7 +14,7 @@ fn main() {
         .with("null", Value::Null)
         .with("false", false)
         .with("true", true)
-        .build();
+        .bottom();
 
     let mut runtime = Runtime::new(&files, scope);
     let res = match runtime.load("test2.mix") {
@@ -25,6 +26,7 @@ fn main() {
             return;
         }
     };
+    println!("{}", PrettyProgram::new(&runtime.program, &files));
     println!("{}", runtime.pretty_lazy(&res));
     let res = runtime.deep_eval(res);
     match res {

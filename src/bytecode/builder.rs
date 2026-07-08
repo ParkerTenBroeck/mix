@@ -33,9 +33,10 @@ impl<'a> ProgramBuilder for ExprBuilder<'a> {
     fn emit_lambda(
         &mut self,
         span: Span,
+        arg_name: Option<&str>,
         expr: impl FnOnce(&mut ExprBuilder),
     ) -> (LambdaId, CodePos) {
-        self.program.emit_lambda(span, expr)
+        self.program.emit_lambda(span, arg_name, expr)
     }
 }
 
@@ -65,9 +66,10 @@ impl<T: ProgramBuilder> ProgramBuilder for &mut T {
     fn emit_lambda(
         &mut self,
         span: Span,
+        arg_name: Option<&str>,
         expr: impl FnOnce(&mut ExprBuilder),
     ) -> (LambdaId, CodePos) {
-        (*self).emit_lambda(span, expr)
+        (*self).emit_lambda(span, arg_name, expr)
     }
 }
 
@@ -77,6 +79,7 @@ pub trait ProgramBuilder {
     fn emit_lambda(
         &mut self,
         span: Span,
+        arg_name: Option<&str>,
         expr: impl FnOnce(&mut ExprBuilder),
     ) -> (LambdaId, CodePos);
 }
@@ -205,9 +208,10 @@ pub trait ByteCodeBuilder: ProgramBuilder {
     fn emit_load_lambda(
         &mut self,
         span: Span,
+        arg_name: Option<&str>,
         body: impl FnMut(&mut ExprBuilder<'_>),
     ) -> &mut Self {
-        let lambda = self.emit_lambda(span, body).0;
+        let lambda = self.emit_lambda(span, arg_name, body).0;
         self.emit(OpCode::LoadLambda(lambda))
     }
 }

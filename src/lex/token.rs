@@ -45,6 +45,7 @@ pub enum Token<'a> {
     Or,
     And,
     Eof,
+    Dollar,
 }
 
 impl<'a> std::fmt::Display for Token<'a> {
@@ -98,6 +99,7 @@ impl<'a> std::fmt::Display for Token<'a> {
             Token::DotDotDot => write!(f, "..."),
             Token::Question => write!(f, "?"),
             Token::At => write!(f, "@"),
+            Token::Dollar => write!(f, "$"),
             Token::PipeR => write!(f, "|>"),
             Token::PipeL => write!(f, "<|"),
             Token::Eof => write!(f, "eof"),

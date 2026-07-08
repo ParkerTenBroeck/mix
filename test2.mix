@@ -14,7 +14,7 @@
     
     value2 = "meow",
     value = 12.2,
-    */
+ 
 
     wow = {wow2 = wow },
 
@@ -28,6 +28,26 @@
     wow33 = {
         y = x+1,
         z = y+2,
-        x = 1+meow.y,
+        x = 1,
     },
+   */
+
+    # inc = x : x+1,
+
+    # two = inc <| inc (inc 1) |> inc,
+    
+    fib = x : if x <= 0 then 0 else if x == 1 then 1 else fib (x-1) + fib (x-2),
+
+    
+    func = final :: Type : Type :: {x = 1, y = 1+final.x, z = 1+final.y },
+    x = func x,
+
+    value_str = "value",
+    meow = {
+        value = { bwap = "hello" }
+    },
+
+    result = meow.${value_str}.bwap,
+
+    value = fib 10,
 }

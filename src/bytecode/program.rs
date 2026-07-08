@@ -12,6 +12,16 @@ use crate::{
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Trace, PartialOrd, Ord)]
 pub struct CodePos(usize);
 
+impl CodePos {
+    pub fn index(self) -> usize {
+        self.0
+    }
+
+    pub fn from_index(index: usize) -> Self {
+        Self(index)
+    }
+}
+
 impl std::ops::Add<CodeLocOffset> for CodePos {
     type Output = CodePos;
 
@@ -23,13 +33,31 @@ impl std::ops::Add<CodeLocOffset> for CodePos {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct CodeLocOffset(pub(super) usize);
 
+impl CodeLocOffset {
+    pub fn len(self) -> usize {
+        self.0
+    }
+}
+
 pub type ExprLoc = CodePos;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct StrId(NonZeroUsize);
 
+impl StrId {
+    pub fn index(self) -> usize {
+        self.0.get()
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Trace)]
 pub struct LambdaId(NonZeroUsize);
+
+impl LambdaId {
+    pub fn index(self) -> usize {
+        self.0.get()
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct ExprId(NonZeroUsize);
@@ -38,6 +66,7 @@ pub struct ExprId(NonZeroUsize);
 pub struct Lambda {
     pub code: CodePos,
     pub span: Span,
+    pub arg_name: Option<StrId>
 }
 
 #[derive(Debug)]
@@ -71,6 +100,18 @@ impl Program {
 
     pub fn get_lambda(&self, lambda: LambdaId) -> Option<&Lambda> {
         self.lambdas.get(lambda.0.get() - 1)
+    }
+
+    pub fn ops(&self) -> &[OpCode] {
+        &self.code
+    }
+
+    pub fn lambdas(&self) -> &[Lambda] {
+        &self.lambdas
+    }
+
+    pub fn expressions(&self) -> &[Expr] {
+        &self.expressions
     }
 
     pub fn find_pos(&self, pos: CodePos) -> Span {
@@ -111,10 +152,12 @@ impl ProgramBuilder for Program {
     fn emit_lambda(
         &mut self,
         span: Span,
+        arg_name: Option<&str>,
         expr: impl FnOnce(&mut ExprBuilder),
     ) -> (LambdaId, CodePos) {
         let (_, code) = self.emit_expr(span, expr);
-        self.lambdas.push(Lambda { code, span });
+        let arg_name = arg_name.map(|str|self.emit_str(str));
+        self.lambdas.push(Lambda { code, span, arg_name });
         (
             LambdaId(NonZeroUsize::new(self.lambdas.len()).unwrap()),
             code,

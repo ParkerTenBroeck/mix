@@ -42,7 +42,11 @@ impl ScopeBuilder {
         self
     }
 
-    pub fn build(self) -> Scope {
+    pub fn bottom(self) -> Scope {
         Scope::bottom(self.scope)
+    }
+
+    pub fn with_scope(self, prev: Scope) -> Scope {
+        Scope::new(self.scope, prev)
     }
 }

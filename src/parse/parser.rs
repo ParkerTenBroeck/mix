@@ -76,6 +76,53 @@ impl<'a> Token<'a> {
             Token::Eof => false,
             Token::Then => false,
             Token::Else => false,
+            Token::Dollar => false,
+        }
+    }
+
+    fn start_fn_arg(&self) -> bool {
+        match self {
+            Token::Ident(_) => true,
+            Token::Num(_) => true,
+            Token::String(_) => true,
+            Token::LParen => true,
+            Token::LBrace => true,
+            Token::LBrack => true,
+            Token::If => true,
+
+            Token::Comment(_) => false,
+            Token::RParen => false,
+            Token::RBrace => false,
+            Token::RBrack => false,
+            Token::Percent => false,
+            Token::SmallRArrow => false,
+            Token::Eq => false,
+            Token::Ne => false,
+            Token::Gt => false,
+            Token::Gte => false,
+            Token::Lt => false,
+            Token::Lte => false,
+            Token::Assign => false,
+            Token::Comma => false,
+            Token::Semicolon => false,
+            Token::Colon => false,
+            Token::Dot => false,
+            Token::DotDotDot => false,
+            Token::Question => false,
+            Token::At => false,
+            Token::PipeR => false,
+            Token::PipeL => false,
+            Token::Plus => false,
+            Token::Star => false,
+            Token::Slash => false,
+            Token::Or => false,
+            Token::And => false,
+            Token::Eof => false,
+            Token::Then => false,
+            Token::Else => false,
+            Token::Bang => false,
+            Token::Minus => false,
+            Token::Dollar => false,
         }
     }
 }
@@ -298,14 +345,14 @@ impl<'a> Parser<'a> {
         };
         self.next();
         let op = Node(op, self.last.1);
-        let expr = self.parse_expr_unop();
-        Node(expr.0, op.1.merge(expr.1))
+        let expr = Box::new(self.parse_expr_unop());
+        Node(ast::Expr::UnOp { expr, op }, op.1.merge(self.last.1))
     }
 
     fn parse_func_application(&mut self) -> Node<ast::Expr<'a>> {
         let mut expr = self.parse_expr_attr_path();
 
-        while self.curr.0.starts_expr() {
+        while self.curr.0.start_fn_arg() {
             let func = Box::new(expr);
             let arg = Box::new(self.parse_expr_attr_path());
             let span = func.1.merge(arg.1);
@@ -499,6 +546,18 @@ impl<'a> Parser<'a> {
                     self.next();
                     ast::AttrPathPart::Str(str)
                 }
+                Token::Dollar => {
+                    self.next();
+                    if !self.consume_if(Token::LBrace){
+                        todo!()
+                    }
+
+                    let expr = self.parse_expr();
+
+                    self.close_delim(Node(Delim::Brace, start));
+
+                    ast::AttrPathPart::Expr(expr.0)
+                },
                 token => {
                     let err = UnexpectedTokenAttrPathError {
                         span: self.curr.1,

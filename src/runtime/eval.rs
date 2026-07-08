@@ -6,7 +6,7 @@ use crate::{
     bytecode::{CodeLocOffset, CodePos, OpCode},
     runtime::{
         LazyValue, Runtime, Value,
-        scope::Scope,
+        scope::{Scope, ScopeBuilder},
         thunk::{Thunk, ThunkEvalErr},
         value::{AttrSet, Lambda, List},
     },
@@ -94,7 +94,7 @@ impl<'a, 'b> Evaluator<'a, 'b> {
             .ok_or(EvalError::ByteCode("value stack"))
     }
 
-    fn push_frame(&mut self, mut frame: Frame) -> Result<(), EvalError<'a>> {
+    fn begin_frame(&mut self, mut frame: Frame) -> Result<(), EvalError<'a>> {
         std::mem::swap(&mut self.curr_frame, &mut frame);
         self.frame_stack.push(PotentialFrame::Realized(frame));
         Ok(())
@@ -123,8 +123,8 @@ impl<'a, 'b> Evaluator<'a, 'b> {
 
         macro_rules! binop_num {
             ($lhs: ident, $rhs: ident, $expr: expr) => {{
-                let lhs = self.pop_value()?;
                 let rhs = self.pop_value()?;
+                let lhs = self.pop_value()?;
                 let result = match (lhs, rhs) {
                     (Value::Int($lhs), Value::Int($rhs)) => $expr,
                     (Value::Float($lhs), Value::Int($rhs)) => {
@@ -145,8 +145,8 @@ impl<'a, 'b> Evaluator<'a, 'b> {
         }
         macro_rules! binop_cmp {
             ($lhs: ident, $rhs: ident, $expr: expr) => {{
-                let lhs = self.pop_value()?;
                 let rhs = self.pop_value()?;
+                let lhs = self.pop_value()?;
                 let result = match (lhs, rhs) {
                     (Value::Int($lhs), Value::Int($rhs)) => $expr,
                     (Value::Float($lhs), Value::Int($rhs)) => {
@@ -171,8 +171,8 @@ impl<'a, 'b> Evaluator<'a, 'b> {
         'main_loop: loop {
             match self.next_op()? {
                 OpCode::Add => {
-                    let lhs = self.pop_value()?;
                     let rhs = self.pop_value()?;
+                    let lhs = self.pop_value()?;
                     let result = match (lhs, rhs) {
                         (Value::Int(lhs), Value::Int(rhs)) => Value::Int(lhs + rhs),
                         (Value::Float(lhs), Value::Int(rhs)) => Value::Float(lhs + rhs as f64),
@@ -248,6 +248,7 @@ impl<'a, 'b> Evaluator<'a, 'b> {
                     let Value::AttrSet(mut attrset) = self.pop_value()? else {
                         todo!()
                     };
+                    
                     attrset
                         .get_mut()
                         .insert(name, LazyValue::construct_begin(expr));
@@ -280,8 +281,26 @@ impl<'a, 'b> Evaluator<'a, 'b> {
                         .push_back(LazyValue::uneval(expr, self.curr_frame.scope.clone()));
                     self.push_value(Value::List(list))?;
                 }
-                OpCode::Apply(loc) => {
-                    // self.push_frame(loc, self.curr_frame.scope.clone(), FrameKind::Function)?;
+                OpCode::Apply(arg_pos) => {
+                    let Value::Lambda(lambda) = self.pop_value()? else {
+                        todo!()
+                    };
+
+                    let frame = match lambda {
+                        Lambda::Lambda { scope, lambda } => {
+                            let lambda = self.runtime.program.get_lambda(lambda).unwrap();
+                            let lambda_pos = lambda.code;
+
+                            let arg_name = lambda.arg_name.map(|id|self.runtime.program.get_str(id)).unwrap_or("");
+
+                            let scope = ScopeBuilder::new()
+                                .with(arg_name, LazyValue::Thunk(Thunk::uneval_with_scope(arg_pos, self.curr_frame.scope.clone())))
+                                .with_scope(scope);
+
+                            Frame::new(lambda_pos, scope, FrameKind::Function)
+                        },
+                    };
+                    self.begin_frame(frame)?;
                 }
 
                 OpCode::LoadLambda(lambda_id) => {
@@ -325,9 +344,9 @@ impl<'a, 'b> Evaluator<'a, 'b> {
                     match lazy.try_get_value(){
                         Ok(ok) => self.push_value(ok)?,
                         Err(thunk) => {
+                            
                             let (pos, scope) = thunk.eval_begin().map_err(EvalError::ThunkEval)?;
-                            self.push_frame(self.curr_frame.clone())?;
-                            self.curr_frame = Frame::new(pos, scope, FrameKind::ThunkEval(thunk));
+                            self.begin_frame(Frame::new(pos, scope, FrameKind::ThunkEval(thunk)))?;
                         },
                     }
                 }
@@ -346,8 +365,7 @@ impl<'a, 'b> Evaluator<'a, 'b> {
                         Ok(ok) => self.push_value(ok)?,
                         Err(thunk) => {
                             let (pos, scope) = thunk.eval_begin().map_err(EvalError::ThunkEval)?;
-                            self.push_frame(self.curr_frame.clone())?;
-                            self.curr_frame = Frame::new(pos, scope, FrameKind::ThunkEval(thunk));
+                            self.begin_frame(Frame::new(pos, scope, FrameKind::ThunkEval(thunk)))?;
                         },
                     }
                 }
@@ -389,7 +407,8 @@ impl<'a, 'b> Evaluator<'a, 'b> {
                     }
 
                     match &self.curr_frame.kind {
-                        FrameKind::ThunkEval(_) 
+                        FrameKind::Function 
+                        | FrameKind::ThunkEval(_) 
                         | FrameKind::ThunkEvalDeepRoot(_) => {
                             self.push_value(ret)?;
                         },
@@ -400,10 +419,10 @@ impl<'a, 'b> Evaluator<'a, 'b> {
                         match self.pop_frame()? {
                             PotentialFrame::Realized(frame) => {
                                 self.curr_frame = frame;
-                                break;
+                                continue 'main_loop;
                             },
                             PotentialFrame::PotentialDeep(thunk) => {
-                                if thunk.get_value().is_some(){
+                                if thunk.get_value().is_some() {
                                     continue;
                                 }
                                 let (pos, scope) = thunk.eval_begin().map_err(EvalError::ThunkEval)?;

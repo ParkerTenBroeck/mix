@@ -142,6 +142,7 @@ impl<'a> Lexer<'a> {
             Some(':') => Ok(Token::Colon),
             Some('?') => Ok(Token::Question),
             Some('@') => Ok(Token::At),
+            Some('$') => Ok(Token::Dollar),
             Some(',') => Ok(Token::Comma),
 
             Some('.') => match self.peek_char() {
