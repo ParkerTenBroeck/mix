@@ -48,5 +48,7 @@ pub enum OpCode {
 
     Branch(CodeLocOffset),
 
+    Pop,
+
     Ret,
 }

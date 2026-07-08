@@ -605,7 +605,11 @@ impl<'a, 'b> Evaluator<'a, 'b> {
                 OpCode::LoadFloat(float) => self.push_value(Value::Float(float))?,
                 OpCode::LoadBool(bool) => self.push_value(Value::Bool(bool))?,
 
-                OpCode::HasAttr => todo!(),
+                OpCode::HasAttr => {
+                    let name = self.pop_string()?;
+                    let attrset = self.pop_attrset()?;
+                    self.push_value(Value::Bool(attrset.get(&name).is_some()))?;
+                },
                 OpCode::GetAttr => {
                     let name = self.pop_string()?;
                     let attrset = self.pop_attrset()?;
@@ -639,6 +643,8 @@ impl<'a, 'b> Evaluator<'a, 'b> {
                         }
                     }
                 }
+
+                OpCode::Pop => _ = self.pop_value()?,
 
                 OpCode::Ret => {
                     let ret = self.pop_value()?;

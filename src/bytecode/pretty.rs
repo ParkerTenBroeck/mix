@@ -135,6 +135,7 @@ fn format_op(program: &Program, pos: CodePos, op: OpCode) -> String {
         OpCode::GetAttr => "GetAttr".into(),
         OpCode::GetAttrOr(expr) => format!("GetAttrOr @{}", fmt_pos(expr)),
         OpCode::Branch(offset) => format_jump("Branch", pos, offset),
+        OpCode::Pop => "Pop".into(),
         OpCode::Ret => "Ret".into(),
     }
 }
