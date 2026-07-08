@@ -21,10 +21,11 @@ pub enum FrameKind {
 
 #[derive(Debug)]
 pub enum EvalError<'a> {
-    Custom(Cow<'a, str>),
     TypeMismatch { expected: ValueType, got: ValueType },
     BinOpTypeMismatch { details: Cow<'a, str> },
     Arithmetic(Cow<'a, str>),
+    MissingAttr(Cow<'a, str>),
+    MissingBinding(Cow<'a, str>),
     Internal(Cow<'a, str>),
     ThunkEval(ThunkEvalErr),
     ByteCode(&'static str),
@@ -384,7 +385,7 @@ impl<'a, 'b> Evaluator<'a, 'b> {
 
     fn next_op(&mut self) -> Result<OpCode, EvalError<'a>> {
         let Some((op, pos)) = self.runtime.program.get(self.curr_frame.pos) else {
-            return Err(EvalError::Custom("overran".into()));
+            return Err(EvalError::ByteCode("instruction pointer overran bytecode"));
         };
         self.curr_frame.pos = pos;
         Ok(op)
@@ -604,23 +605,14 @@ impl<'a, 'b> Evaluator<'a, 'b> {
                 OpCode::LoadFloat(float) => self.push_value(Value::Float(float))?,
                 OpCode::LoadBool(bool) => self.push_value(Value::Bool(bool))?,
 
-                OpCode::WithScope => {
-                    let _attrset = self.pop_attrset()?;
-                    // self.curr_frame.scope = Scope::new(attrset, self.curr_frame.scope.clone());
-                }
-                OpCode::LastScope => {
-                    // if let Some(previous) = self.curr_frame.scope.prev.clone() {
-                    //     self.curr_frame.scope = *previous;
-                    // } else {
-                    //     self.curr_frame.scope = Scope::new(AttrSet::default());
-                    // }
-                }
                 OpCode::HasAttr => todo!(),
                 OpCode::GetAttr => {
                     let name = self.pop_string()?;
                     let attrset = self.pop_attrset()?;
                     let Some(lazy) = attrset.get(&name) else {
-                        break Err(EvalError::Custom("meoew".into()));
+                        break Err(EvalError::MissingAttr(
+                            format!("attribute {name:?} was not found in attrset").into(),
+                        ));
                     };
                     match lazy.try_get_value() {
                         Ok(ok) => self.push_value(ok)?,
@@ -635,7 +627,7 @@ impl<'a, 'b> Evaluator<'a, 'b> {
                 OpCode::LoadScope => {
                     let name = self.pop_string()?;
                     let Some(lazy) = self.curr_frame.scope.resolve(&name) else {
-                        return Err(EvalError::Custom(
+                        return Err(EvalError::MissingBinding(
                             format!("failed to resolve {name:?}").into(),
                         ));
                     };

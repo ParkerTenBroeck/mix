@@ -48,6 +48,5 @@
     },
 
     result = meow.${value_str}.bwap,
-
     value = fib 10,
 }

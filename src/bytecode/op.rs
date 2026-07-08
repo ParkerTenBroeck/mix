@@ -41,8 +41,6 @@ pub enum OpCode {
     LoadBool(bool),
 
     LoadScope,
-    WithScope,
-    LastScope,
 
     HasAttr,
     GetAttr,

@@ -131,8 +131,6 @@ fn format_op(program: &Program, pos: CodePos, op: OpCode) -> String {
         OpCode::LoadFloat(float) => format!("LoadFloat {float}"),
         OpCode::LoadBool(value) => format!("LoadBool {value}"),
         OpCode::LoadScope => "LoadScope".into(),
-        OpCode::WithScope => "WithScope".into(),
-        OpCode::LastScope => "LastScope".into(),
         OpCode::HasAttr => "HasAttr".into(),
         OpCode::GetAttr => "GetAttr".into(),
         OpCode::GetAttrOr(expr) => format!("GetAttrOr @{}", fmt_pos(expr)),
