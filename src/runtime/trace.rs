@@ -1,8 +1,8 @@
 use crate::{
     files::Span,
     runtime::{
-        Runtime,
         eval::{EvalError, Evaluator, FrameKind as EvalFrameKind, PotentialFrame},
+        Runtime,
     },
 };
 
@@ -19,6 +19,12 @@ impl<'a> ErrorTrace<'a> {
             Renderer::styled().decor_style(annotate_snippets::renderer::DecorStyle::Unicode);
         let title = match &self.kind {
             EvalError::Custom(message) => message.to_string(),
+            EvalError::TypeMismatch { expected, got } => {
+                format!("type mismatch: expected {expected}, got {got}")
+            }
+            EvalError::BinOpTypeMismatch { details } => details.to_string(),
+            EvalError::Arithmetic(message) => message.to_string(),
+            EvalError::Internal(message) => format!("internal runtime error: {message}"),
             EvalError::ByteCode(message) => format!("bytecode error: {message}"),
             EvalError::ThunkEval(thunk_eval_err) => match thunk_eval_err {
                 crate::runtime::thunk::ThunkEvalErr::InfiniteRec => "infinite recursion",

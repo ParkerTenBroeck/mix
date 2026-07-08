@@ -4,12 +4,44 @@ use std::{
     path::PathBuf,
 };
 
-use dumpster::{Trace, unsync::Gc};
+use dumpster::{unsync::Gc, Trace};
 
 use crate::{
     bytecode::{CodePos, LambdaId},
     runtime::{scope::Scope, thunk::Thunk},
 };
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ValueType {
+    Number,
+    Null,
+    Bool,
+    Int,
+    Float,
+    String,
+    Path,
+    List,
+    AttrSet,
+    Lambda,
+}
+
+impl std::fmt::Display for ValueType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let name = match self {
+            ValueType::Number => "number",
+            ValueType::Null => "null",
+            ValueType::Bool => "bool",
+            ValueType::Int => "int",
+            ValueType::Float => "float",
+            ValueType::String => "string",
+            ValueType::Path => "path",
+            ValueType::List => "list",
+            ValueType::AttrSet => "attrset",
+            ValueType::Lambda => "lambda",
+        };
+        f.write_str(name)
+    }
+}
 
 #[derive(Clone, Debug, Trace)]
 pub enum Value {
@@ -22,6 +54,22 @@ pub enum Value {
     List(List),
     AttrSet(AttrSet),
     Lambda(Lambda),
+}
+
+impl Value {
+    pub fn ty(&self) -> ValueType {
+        match self {
+            Value::Null => ValueType::Null,
+            Value::Bool(_) => ValueType::Bool,
+            Value::Int(_) => ValueType::Int,
+            Value::Float(_) => ValueType::Float,
+            Value::String(_) => ValueType::String,
+            Value::Path(_) => ValueType::Path,
+            Value::List(_) => ValueType::List,
+            Value::AttrSet(_) => ValueType::AttrSet,
+            Value::Lambda(_) => ValueType::Lambda,
+        }
+    }
 }
 
 impl From<i64> for Value {
