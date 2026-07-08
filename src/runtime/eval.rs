@@ -1,5 +1,4 @@
 use super::trace::*;
-use dumpster::Trace;
 use std::borrow::Cow;
 
 use crate::{

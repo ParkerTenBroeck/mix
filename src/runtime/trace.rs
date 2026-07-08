@@ -107,7 +107,7 @@ fn render_frame<'a>(
 
     let (path, source) = runtime.loader.file(frame.span.fid);
     let annotation = AnnotationKind::Primary
-        .span(frame.span.range.clone().into())
+        .span(frame.span.range.into())
         .label(label);
     let snippet = Snippet::source(source)
         .path(path.display().to_string())
