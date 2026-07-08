@@ -258,7 +258,12 @@ impl<'a, 'b> Evaluator<'a, 'b> {
                         todo!()
                     };
                     let scope = if op == OpCode::FinalizeAttrSetRec {
-                        Scope::new(attrset.clone(), self.curr_frame.scope.clone())
+                        let mut scope = self.curr_frame.scope.clone();
+                        let scope_mut = scope.get_mut();
+                        for (name, value) in attrset.iter(){
+                            scope_mut.insert(name.into(), value.clone());
+                        }
+                        scope
                     } else {
                         self.curr_frame.scope.clone()
                     };
@@ -286,15 +291,15 @@ impl<'a, 'b> Evaluator<'a, 'b> {
                     };
 
                     let frame = match lambda {
-                        Lambda::Lambda { scope, lambda } => {
+                        Lambda::Lambda { mut scope, lambda } => {
                             let lambda = self.runtime.program.get_lambda(lambda).unwrap();
                             let lambda_pos = lambda.code;
 
                             let arg_name = lambda.arg_name.map(|id|self.runtime.program.get_str(id)).unwrap_or("");
-
-                            let scope = ScopeBuilder::new()
-                                .with(arg_name, LazyValue::Thunk(Thunk::uneval_with_scope(arg_pos, self.curr_frame.scope.clone())))
-                                .with_scope(scope);
+                            let thunk = LazyValue::Thunk(Thunk::uneval_with_scope(arg_pos, self.curr_frame.scope.clone()));
+                            
+                            let scope_mut = scope.get_mut();
+                            scope_mut.insert(arg_name.into(), thunk);
 
                             Frame::new(lambda_pos, scope, FrameKind::Function)
                         },
@@ -320,14 +325,14 @@ impl<'a, 'b> Evaluator<'a, 'b> {
                     let Value::AttrSet(attrset) = self.pop_value()? else {
                         todo!()
                     };
-                    self.curr_frame.scope = Scope::new(attrset, self.curr_frame.scope.clone());
+                    // self.curr_frame.scope = Scope::new(attrset, self.curr_frame.scope.clone());
                 }
                 OpCode::LastScope => {
-                    if let Some(previous) = self.curr_frame.scope.prev.clone() {
-                        self.curr_frame.scope = *previous;
-                    } else {
-                        self.curr_frame.scope = Scope::bottom(AttrSet::default());
-                    }
+                    // if let Some(previous) = self.curr_frame.scope.prev.clone() {
+                    //     self.curr_frame.scope = *previous;
+                    // } else {
+                    //     self.curr_frame.scope = Scope::new(AttrSet::default());
+                    // }
                 }
                 OpCode::HasAttr => todo!(),
                 OpCode::GetAttr => {

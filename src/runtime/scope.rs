@@ -1,29 +1,33 @@
+use std::ops::{Deref, DerefMut};
+
 use dumpster::Trace;
 
 use crate::runtime::{LazyValue, value::AttrSet};
 
 #[derive(Clone, Default, Debug, Trace)]
-pub struct Scope {
-    pub curr: AttrSet,
-    pub prev: Option<Box<Scope>>,
-}
+pub struct Scope(AttrSet);
 
 impl Scope {
-    pub fn new(curr: AttrSet, prev: Scope) -> Self {
-        Self {
-            curr,
-            prev: Some(Box::new(prev)),
-        }
-    }
-
-    pub fn bottom(curr: AttrSet) -> Self {
-        Scope { curr, prev: None }
+    pub fn new(scope: AttrSet) -> Self {
+        Self(scope)
     }
 
     pub fn resolve(&self, name: &str) -> Option<&LazyValue> {
-        self.curr
-            .get(name)
-            .or_else(|| self.prev.as_ref().and_then(|prev| prev.resolve(name)))
+        self.0.get(name)
+    }
+}
+
+impl Deref for Scope {
+    type Target = AttrSet;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl DerefMut for Scope {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
     }
 }
 
@@ -43,10 +47,6 @@ impl ScopeBuilder {
     }
 
     pub fn bottom(self) -> Scope {
-        Scope::bottom(self.scope)
-    }
-
-    pub fn with_scope(self, prev: Scope) -> Scope {
-        Scope::new(self.scope, prev)
+        Scope::new(self.scope)
     }
 }
