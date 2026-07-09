@@ -1,7 +1,7 @@
 use std::fmt;
 
 use crate::{
-    bytecode::{CodePos, CodeLocOffset, OpCode, Program},
+    bytecode::{CodeLocOffset, CodePos, OpCode, Program},
     files::{Files, Span},
 };
 

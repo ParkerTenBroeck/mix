@@ -120,5 +120,6 @@ pub struct AttrPath<'a> {
 #[derive(Clone, Debug)]
 pub enum AttrPathPart<'a> {
     Ident(&'a str),
+    Num(i64),
     Expr(Expr<'a>),
 }

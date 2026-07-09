@@ -6,7 +6,7 @@ use super::*;
 
 use crate::{
     files::{Node, Span},
-    mir::ast,
+    mir,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Trace, PartialOrd, Ord)]
@@ -66,7 +66,7 @@ pub struct ExprId(NonZeroUsize);
 pub struct Lambda {
     pub code: CodePos,
     pub span: Span,
-    pub arg_name: Option<StrId>
+    pub arg_name: Option<StrId>,
 }
 
 #[derive(Debug)]
@@ -85,7 +85,7 @@ pub struct Program {
 }
 
 impl Program {
-    pub fn compile(&mut self, expr: &Node<ast::Expr>) -> CodePos {
+    pub fn compile(&mut self, expr: &Node<mir::Expr>) -> CodePos {
         let mut compiler = crate::compiler::Compiler::new();
         compiler.compile_top_level(self, expr)
     }
@@ -156,8 +156,12 @@ impl ProgramBuilder for Program {
         expr: impl FnOnce(&mut ExprBuilder),
     ) -> (LambdaId, CodePos) {
         let (_, code) = self.emit_expr(span, expr);
-        let arg_name = arg_name.map(|str|self.emit_str(str));
-        self.lambdas.push(Lambda { code, span, arg_name });
+        let arg_name = arg_name.map(|str| self.emit_str(str));
+        self.lambdas.push(Lambda {
+            code,
+            span,
+            arg_name,
+        });
         (
             LambdaId(NonZeroUsize::new(self.lambdas.len()).unwrap()),
             code,

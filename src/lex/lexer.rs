@@ -41,26 +41,6 @@ impl<'a> Lexer<'a> {
         Some(char)
     }
 
-    fn parse_num(&mut self, start: usize, mut has_dot: bool) -> Result<Token<'a>, LexError> {
-        let mut dot_err = false;
-        loop {
-            match self.peek_char() {
-                Some('0'..='9' | '_') => _ = self.next_tok(),
-                Some('.') => {
-                    dot_err = has_dot;
-                    has_dot = true;
-                    _ = self.next_tok();
-                }
-                _ => break,
-            }
-        }
-        if dot_err {
-            Err(LexError::NumberError)
-        } else {
-            Ok(Token::Num(&self.str[start..self.pos]))
-        }
-    }
-
     pub fn next_tok(&mut self) -> Node<Result<Token<'a>, LexError>> {
         self.pos += if let Some(str) = self.str.get(self.pos..) {
             str.len() - str.trim_start().len()
@@ -139,7 +119,13 @@ impl<'a> Lexer<'a> {
             },
             Some('%') => Ok(Token::Percent),
             Some(';') => Ok(Token::Semicolon),
-            Some(':') => Ok(Token::Colon),
+            Some(':') => match self.peek_char() {
+                Some(':') => {
+                    self.next_char();
+                    Ok(Token::ColonColon)
+                }
+                _ => Ok(Token::Colon),
+            },
             Some('?') => Ok(Token::Question),
             Some('@') => Ok(Token::At),
             Some('$') => Ok(Token::Dollar),
@@ -156,7 +142,6 @@ impl<'a> Lexer<'a> {
                         }
                     }
                 }
-                Some('0'..='9') => self.parse_num(start, true),
                 _ => Ok(Token::Dot),
             },
             Some('|') => match self.peek_char() {
@@ -208,7 +193,12 @@ impl<'a> Lexer<'a> {
                 let comment = &self.str[start + 1..self.pos];
                 Ok(Token::Comment(comment))
             }
-            Some('0'..='9') => self.parse_num(start, false),
+            Some('0'..='9') => {
+                while let Some('0'..='9' | '_') = self.peek_char() {
+                    _ = self.next_tok()
+                }
+                Ok(Token::Num(&self.str[start..self.pos]))
+            }
 
             Some(char) => Err(LexError::UnexpectedChar(char)),
         };

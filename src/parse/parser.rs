@@ -77,6 +77,7 @@ impl<'a> Token<'a> {
             Token::Then => false,
             Token::Else => false,
             Token::Dollar => false,
+            Token::ColonColon => false,
         }
     }
 
@@ -123,6 +124,7 @@ impl<'a> Token<'a> {
             Token::Bang => false,
             Token::Minus => false,
             Token::Dollar => false,
+            Token::ColonColon => false,
         }
     }
 }
@@ -485,29 +487,8 @@ impl<'a> Parser<'a> {
                 }
             }
             Token::Ident(ident) => ast::Expr::Ident(ident),
-            Token::Num(num) => ast::Expr::Num(if num.contains('.') {
-                match num.parse() {
-                    Ok(ok) => ast::Num::Float(ok),
-                    Err(err) => {
-                        self.reports.emit(FloatError {
-                            span: self.last.1,
-                            err,
-                        });
-                        ast::Num::Float(0.0)
-                    }
-                }
-            } else {
-                match num.parse() {
-                    Ok(ok) => ast::Num::Int(ok),
-                    Err(err) => {
-                        self.reports.emit(IntError {
-                            span: self.last.1,
-                            err,
-                        });
-                        ast::Num::Int(0)
-                    }
-                }
-            }),
+            Token::Num(num) => self.parse_num(Some(num)),
+            Token::Dot => self.parse_num(None),
             Token::String(str) => ast::Expr::Str(str),
             token => {
                 self.reports.emit(UnexpectedTokenExprError {
@@ -520,6 +501,60 @@ impl<'a> Parser<'a> {
         };
         let end = self.last.1;
         Node(expr, start.merge(end))
+    }
+
+    fn parse_num(&mut self, start: Option<&str>) -> ast::Expr<'a> {
+        let start_span = self.last.1;
+
+        let num = match start {
+            Some(start) => {
+                if self.consume_if(Token::Dot) {
+                    let end = if let Token::Num(end) = self.curr.0 {
+                        self.next();
+                        end
+                    } else {
+                        ""
+                    };
+                    format!("{start}.{end}")
+                } else {
+                    start.into()
+                }
+            }
+            None => {
+                let Token::Num(start) = self.next() else {
+                    todo!()
+                };
+                format!(".{start}")
+            }
+        };
+
+        let end_span = self.last.1;
+
+        let num = if num.contains('.') {
+            ast::Num::Float(match num.parse() {
+                Ok(num) => num,
+                Err(err) => {
+                    self.reports.emit(FloatError {
+                        span: start_span.merge(end_span),
+                        err,
+                    });
+                    0.
+                }
+            })
+        } else {
+            ast::Num::Int(match num.parse() {
+                Ok(num) => num,
+                Err(err) => {
+                    self.reports.emit(IntError {
+                        span: start_span.merge(end_span),
+                        err,
+                    });
+                    0
+                }
+            })
+        };
+
+        ast::Expr::Num(num)
     }
 
     fn parse_attr(&mut self) -> Node<ast::Attr<'a>> {
@@ -546,9 +581,21 @@ impl<'a> Parser<'a> {
                     self.next();
                     ast::AttrPathPart::Str(str)
                 }
+                Token::Num(str) => {
+                    self.next();
+                    let num = match str.parse() {
+                        Ok(num) => num,
+                        Err(_) => {
+                            todo!();
+                            0
+                        }
+                    };
+
+                    ast::AttrPathPart::Num(num)
+                }
                 Token::Dollar => {
                     self.next();
-                    if !self.consume_if(Token::LBrace){
+                    if !self.consume_if(Token::LBrace) {
                         todo!()
                     }
 
@@ -557,7 +604,7 @@ impl<'a> Parser<'a> {
                     self.close_delim(Node(Delim::Brace, start));
 
                     ast::AttrPathPart::Expr(expr.0)
-                },
+                }
                 token => {
                     let err = UnexpectedTokenAttrPathError {
                         span: self.curr.1,

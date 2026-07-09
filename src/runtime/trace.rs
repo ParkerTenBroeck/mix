@@ -1,8 +1,8 @@
 use crate::{
     files::Span,
     runtime::{
-        eval::{EvalError, Evaluator, FrameKind as EvalFrameKind, PotentialFrame},
         Runtime,
+        eval::{EvalError, Evaluator, FrameKind as EvalFrameKind, PotentialFrame},
     },
 };
 

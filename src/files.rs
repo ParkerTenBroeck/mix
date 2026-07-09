@@ -45,6 +45,12 @@ impl Span {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Node<T>(pub T, pub Span);
 
+impl<T> Node<T> {
+    pub fn map<R>(self, map: impl FnOnce(T) -> R) -> Node<R> {
+        Node(map(self.0), self.1)
+    }
+}
+
 type Error<'a> = Cow<'a, str>;
 type Storage = Result<(Cow<'static, str>, FileId), Error<'static>>;
 type LoaderResult = Result<Cow<'static, str>, Error<'static>>;

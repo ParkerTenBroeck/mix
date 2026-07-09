@@ -64,7 +64,7 @@ impl<'rt, 'a> PrettyPrinter<'rt, 'a> {
             Value::List(list) => self.count_list(list, seen),
             Value::AttrSet(attrset) => self.count_attrset(attrset, seen),
             Value::Lambda(_) => {}
-            | Value::Bool(_)
+            Value::Bool(_)
             | Value::Int(_)
             | Value::Float(_)
             | Value::String(_)

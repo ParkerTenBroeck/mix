@@ -4,8 +4,7 @@ use mix::{
     runtime::{Runtime, scope::ScopeBuilder},
 };
 
-
-fn run(){
+fn run() {
     let files = Files::new(|path| match std::fs::read_to_string(path) {
         Ok(ok) => Ok(ok.into()),
         Err(err) => Err(format!("{}: {err}", path.display()).into()),
@@ -30,7 +29,7 @@ fn run(){
     println!("{}", runtime.pretty_lazy(&res));
     let res = runtime.deep_eval(res);
     match res {
-        Ok(ok) => println!("{}", runtime.pretty_value(&ok)),
+        Ok(ok) => println!("{:?}", ok),
         Err(trace) => println!("{}", trace.render(&runtime)),
     }
 }

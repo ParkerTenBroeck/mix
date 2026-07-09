@@ -1,13 +1,13 @@
 use super::trace::*;
-use std::borrow::Cow;
+use std::{borrow::Cow, usize};
 
 use crate::{
     bytecode::{CodeLocOffset, CodePos, OpCode},
     runtime::{
+        LazyValue, Runtime, Value,
         scope::Scope,
         thunk::{Thunk, ThunkEvalErr},
         value::{AttrSet, Lambda, List, ValueType},
-        LazyValue, Runtime, Value,
     },
 };
 
@@ -395,6 +395,47 @@ impl<'a, 'b> Evaluator<'a, 'b> {
         self.curr_frame.pos = self.curr_frame.pos + off;
     }
 
+    fn get_attr(&mut self) -> Result<LazyValue, EvalError<'a>> {
+        match self.pop_value()? {
+            Value::String(name) => match self.pop_value()? {
+                Value::AttrSet(attrset) => {
+                    let Some(lazy) = attrset.get(&name) else {
+                        return Err(EvalError::MissingAttr(
+                            format!("attribute {name:?} was not found in attrset").into(),
+                        ));
+                    };
+                    Ok(lazy.clone())
+                }
+                Value::List(list) => {
+                    if name != "len" {
+                        Err(EvalError::MissingAttr(
+                            format!("attribute {name:?} was not found in list").into(),
+                        ))
+                    } else {
+                        Ok(LazyValue::Value(Value::Int(list.len() as i64)))
+                    }
+                }
+                value => Err(EvalError::TypeMismatch {
+                    expected: ValueType::AttrSet,
+                    got: value.ty(),
+                }),
+            },
+            Value::Int(index) => {
+                let list = self.pop_list()?;
+                let Some(lazy) = list.get(index.try_into().unwrap_or(usize::MAX)) else {
+                    return Err(EvalError::MissingAttr(
+                        format!("index {index} is not in list").into(),
+                    ));
+                };
+                Ok(lazy.clone())
+            }
+            value => Err(EvalError::TypeMismatch {
+                expected: ValueType::AttrSet,
+                got: value.ty(),
+            }),
+        }
+    }
+
     fn run_loop(&mut self) -> Result<Value, EvalError<'a>> {
         use crate::bytecode::OpCode;
 
@@ -478,7 +519,7 @@ impl<'a, 'b> Evaluator<'a, 'b> {
                             return Err(EvalError::TypeMismatch {
                                 expected: ValueType::Bool,
                                 got: other.ty(),
-                            })
+                            });
                         }
                     };
                     self.push_value(result)?;
@@ -491,7 +532,7 @@ impl<'a, 'b> Evaluator<'a, 'b> {
                             return Err(EvalError::TypeMismatch {
                                 expected: ValueType::Number,
                                 got: other.ty(),
-                            })
+                            });
                         }
                     };
                     self.push_value(result)?;
@@ -609,15 +650,9 @@ impl<'a, 'b> Evaluator<'a, 'b> {
                     let name = self.pop_string()?;
                     let attrset = self.pop_attrset()?;
                     self.push_value(Value::Bool(attrset.get(&name).is_some()))?;
-                },
+                }
                 OpCode::GetAttr => {
-                    let name = self.pop_string()?;
-                    let attrset = self.pop_attrset()?;
-                    let Some(lazy) = attrset.get(&name) else {
-                        break Err(EvalError::MissingAttr(
-                            format!("attribute {name:?} was not found in attrset").into(),
-                        ));
-                    };
+                    let lazy = self.get_attr()?;
                     match lazy.try_get_value() {
                         Ok(ok) => self.push_value(ok)?,
                         Err(thunk) => {

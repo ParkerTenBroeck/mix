@@ -30,7 +30,6 @@
         z = y+2,
         x = 1,
     },
-   */
 
     # inc = x : x+1,
 
@@ -39,8 +38,9 @@
     fib = x : if x <= 0 then 0 else if x == 1 then 1 else fib (x-1) + fib (x-2),
 
     
-    func = final :: Type : Type :: {x = 1, y = 1+final.x, z = 1+final.y },
+    func = final : {x = 1, y = 1+final.x, z = 1+final.y },
     x = func x,
+
 
     value_str = "value",
     meow = {
@@ -49,4 +49,9 @@
 
     result = meow.${value_str}.bwap,
     value = fib 10,
-}
+
+   */
+
+    list = [1.2, [2]],
+    number = list.${list.len - 1}.0,
+}.number

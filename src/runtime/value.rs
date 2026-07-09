@@ -4,7 +4,7 @@ use std::{
     path::PathBuf,
 };
 
-use dumpster::{unsync::Gc, Trace};
+use dumpster::{Trace, unsync::Gc};
 
 use crate::{
     bytecode::{CodePos, LambdaId},
