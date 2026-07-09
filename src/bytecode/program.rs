@@ -34,7 +34,7 @@ impl std::ops::Add<CodeLocOffset> for CodePos {
 pub struct CodeLocOffset(pub(super) usize);
 
 impl CodeLocOffset {
-    pub fn len(self) -> usize {
+    pub fn offset(self) -> usize {
         self.0
     }
 }

@@ -142,7 +142,7 @@ fn format_op(program: &Program, pos: CodePos, op: OpCode) -> String {
 
 fn format_jump(name: &str, pos: CodePos, offset: CodeLocOffset) -> String {
     let target = pos + offset + CodeLocOffset(1);
-    format!("{name} +{} -> {}", offset.len(), fmt_pos(target))
+    format!("{name} +{} -> {}", offset.offset(), fmt_pos(target))
 }
 
 fn format_span(files: &Files, span: Span) -> String {
@@ -225,7 +225,7 @@ impl FlowPrinter {
     }
 
     fn push_region(&mut self, start: usize, offset: CodeLocOffset, kind: FlowKind) {
-        let end = start + offset.len();
+        let end = start + offset.offset();
         if end > start {
             self.regions.push(FlowRegion { end, kind });
         }

@@ -1,5 +1,5 @@
 use super::trace::*;
-use std::{borrow::Cow, usize};
+use std::borrow::Cow;
 
 use crate::{
     bytecode::{CodeLocOffset, CodePos, OpCode},
