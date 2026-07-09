@@ -1,17 +1,17 @@
 use mix::{
     bytecode::PrettyProgram,
     files::Files,
-    runtime::{Runtime, scope::ScopeBuilder, value::Value},
+    runtime::{Runtime, scope::ScopeBuilder},
 };
 
-fn main() {
+
+fn run(){
     let files = Files::new(|path| match std::fs::read_to_string(path) {
         Ok(ok) => Ok(ok.into()),
         Err(err) => Err(format!("{}: {err}", path.display()).into()),
     });
 
     let scope = ScopeBuilder::new()
-        .with("null", Value::Null)
         .with("false", false)
         .with("true", true)
         .bottom();
@@ -33,4 +33,9 @@ fn main() {
         Ok(ok) => println!("{}", runtime.pretty_value(&ok)),
         Err(trace) => println!("{}", trace.render(&runtime)),
     }
+}
+
+fn main() {
+    run();
+    dumpster::unsync::collect();
 }

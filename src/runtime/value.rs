@@ -14,7 +14,6 @@ use crate::{
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ValueType {
     Number,
-    Null,
     Bool,
     Int,
     Float,
@@ -29,7 +28,6 @@ impl std::fmt::Display for ValueType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let name = match self {
             ValueType::Number => "number",
-            ValueType::Null => "null",
             ValueType::Bool => "bool",
             ValueType::Int => "int",
             ValueType::Float => "float",
@@ -45,7 +43,6 @@ impl std::fmt::Display for ValueType {
 
 #[derive(Clone, Debug, Trace)]
 pub enum Value {
-    Null,
     Bool(bool),
     Int(i64),
     Float(f64),
@@ -59,7 +56,6 @@ pub enum Value {
 impl Value {
     pub fn ty(&self) -> ValueType {
         match self {
-            Value::Null => ValueType::Null,
             Value::Bool(_) => ValueType::Bool,
             Value::Int(_) => ValueType::Int,
             Value::Float(_) => ValueType::Float,

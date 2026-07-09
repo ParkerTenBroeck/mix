@@ -64,7 +64,6 @@ impl<'rt, 'a> PrettyPrinter<'rt, 'a> {
             Value::List(list) => self.count_list(list, seen),
             Value::AttrSet(attrset) => self.count_attrset(attrset, seen),
             Value::Lambda(_) => {}
-            Value::Null
             | Value::Bool(_)
             | Value::Int(_)
             | Value::Float(_)
@@ -115,7 +114,6 @@ impl<'rt, 'a> PrettyPrinter<'rt, 'a> {
 
     fn render_value_inner(&mut self, value: &Value, indent: usize) -> String {
         match value {
-            Value::Null => "null".into(),
             Value::Bool(value) => value.to_string(),
             Value::Int(value) => value.to_string(),
             Value::Float(value) => value.to_string(),
