@@ -2,182 +2,182 @@ use crate::files::Node;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Pattern<'a> {
-    pub binding: Option<Node<&'a str>>,
-    pub destruct: Vec<()>,
-    pub strict_destruct: bool,
+	pub binding: Option<Node<&'a str>>,
+	pub destruct: Vec<()>,
+	pub strict_destruct: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BinOp {
-    Rem,
-    Div,
-    Mul,
+	Rem,
+	Div,
+	Mul,
 
-    Sub,
-    Add,
+	Sub,
+	Add,
 
-    Lt,
-    Lte,
-    Gt,
-    Gte,
-    Eq,
-    Ne,
+	Lt,
+	Lte,
+	Gt,
+	Gte,
+	Eq,
+	Ne,
 
-    And,
-    Or,
+	And,
+	Or,
 
-    PipeL,
-    PipeR,
-    LogImp,
+	PipeL,
+	PipeR,
+	LogImp,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Associativity {
-    Left,
-    None,
-    Right,
+	Left,
+	None,
+	Right,
 }
 
 impl BinOp {
-    pub fn precedence(&self) -> u32 {
-        match self {
-            BinOp::Add => 20 - 4,
-            BinOp::Sub => 20 - 4,
+	pub fn precedence(&self) -> u32 {
+		match self {
+			BinOp::Add => 20 - 4,
+			BinOp::Sub => 20 - 4,
 
-            BinOp::Mul => 20 - 3,
-            BinOp::Div => 20 - 3,
-            BinOp::Rem => 20 - 3,
+			BinOp::Mul => 20 - 3,
+			BinOp::Div => 20 - 3,
+			BinOp::Rem => 20 - 3,
 
-            BinOp::Lt => 20 - 6,
-            BinOp::Lte => 20 - 6,
-            BinOp::Gt => 20 - 6,
-            BinOp::Gte => 20 - 6,
+			BinOp::Lt => 20 - 6,
+			BinOp::Lte => 20 - 6,
+			BinOp::Gt => 20 - 6,
+			BinOp::Gte => 20 - 6,
 
-            BinOp::Eq => 20 - 7,
-            BinOp::Ne => 20 - 7,
+			BinOp::Eq => 20 - 7,
+			BinOp::Ne => 20 - 7,
 
-            BinOp::And => 20 - 8,
-            BinOp::Or => 20 - 10,
+			BinOp::And => 20 - 8,
+			BinOp::Or => 20 - 10,
 
-            BinOp::LogImp => 20 - 14,
+			BinOp::LogImp => 20 - 14,
 
-            BinOp::PipeL => 20 - 15,
-            BinOp::PipeR => 20 - 15,
-        }
-    }
+			BinOp::PipeL => 20 - 15,
+			BinOp::PipeR => 20 - 15,
+		}
+	}
 
-    pub fn associativity(&self) -> Associativity {
-        match self {
-            BinOp::Add => Associativity::Left,
-            BinOp::Sub => Associativity::Left,
+	pub fn associativity(&self) -> Associativity {
+		match self {
+			BinOp::Add => Associativity::Left,
+			BinOp::Sub => Associativity::Left,
 
-            BinOp::Mul => Associativity::Left,
-            BinOp::Div => Associativity::Left,
-            BinOp::Rem => Associativity::Left,
+			BinOp::Mul => Associativity::Left,
+			BinOp::Div => Associativity::Left,
+			BinOp::Rem => Associativity::Left,
 
-            BinOp::Lt => Associativity::None,
-            BinOp::Lte => Associativity::None,
-            BinOp::Gt => Associativity::None,
-            BinOp::Gte => Associativity::None,
+			BinOp::Lt => Associativity::None,
+			BinOp::Lte => Associativity::None,
+			BinOp::Gt => Associativity::None,
+			BinOp::Gte => Associativity::None,
 
-            BinOp::Eq => Associativity::None,
-            BinOp::Ne => Associativity::None,
+			BinOp::Eq => Associativity::None,
+			BinOp::Ne => Associativity::None,
 
-            BinOp::And => Associativity::Left,
-            BinOp::Or => Associativity::Left,
+			BinOp::And => Associativity::Left,
+			BinOp::Or => Associativity::Left,
 
-            BinOp::LogImp => Associativity::Right,
+			BinOp::LogImp => Associativity::Right,
 
-            BinOp::PipeL => Associativity::Right,
-            BinOp::PipeR => Associativity::Left,
-        }
-    }
+			BinOp::PipeL => Associativity::Right,
+			BinOp::PipeR => Associativity::Left,
+		}
+	}
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum UnOp {
-    Neg,
-    Not,
+	Neg,
+	Not,
 }
 
 #[derive(Clone, Debug)]
 pub struct Lambda<'a> {
-    pub arg: Node<Pattern<'a>>,
-    pub body: Box<Node<Expr<'a>>>,
+	pub arg: Node<Pattern<'a>>,
+	pub body: Box<Node<Expr<'a>>>,
 }
 
 #[derive(Clone, Copy, Debug)]
 pub enum Num {
-    Float(f64),
-    Int(i64),
+	Float(f64),
+	Int(i64),
 }
 
 #[derive(Clone, Debug)]
 pub enum Expr<'a> {
-    Lambda(Lambda<'a>),
-    FuncApp {
-        func: Box<Node<Expr<'a>>>,
-        arg: Box<Node<Expr<'a>>>,
-    },
-    IfThenElse {
-        cond: Box<Node<Expr<'a>>>,
-        then_expr: Box<Node<Expr<'a>>>,
-        else_expr: Box<Node<Expr<'a>>>,
-    },
-    BinOp {
-        lhs: Box<Node<Expr<'a>>>,
-        op: Node<BinOp>,
-        rhs: Box<Node<Expr<'a>>>,
-    },
-    UnOp {
-        expr: Box<Node<Expr<'a>>>,
-        op: Node<UnOp>,
-    },
-    Let {
-        bindings: Vec<LetBinding<'a>>,
-    },
-    AttrSet {
-        attrs: Vec<Node<Attr<'a>>>,
-    },
-    List {
-        elements: Vec<Node<Expr<'a>>>,
-    },
-    AccessAttr {
-        expr: Box<Node<Expr<'a>>>,
-        path: Node<AttrPath<'a>>,
-        or: Option<Box<Node<Expr<'a>>>>,
-    },
-    HasAttr {
-        expr: Box<Node<Expr<'a>>>,
-        path: Node<AttrPath<'a>>,
-    },
-    Paren(Box<Node<Expr<'a>>>),
-    Ident(&'a str),
-    Num(Num),
-    Str(&'a str),
+	Lambda(Lambda<'a>),
+	FuncApp {
+		func: Box<Node<Expr<'a>>>,
+		arg: Box<Node<Expr<'a>>>,
+	},
+	IfThenElse {
+		cond: Box<Node<Expr<'a>>>,
+		then_expr: Box<Node<Expr<'a>>>,
+		else_expr: Box<Node<Expr<'a>>>,
+	},
+	BinOp {
+		lhs: Box<Node<Expr<'a>>>,
+		op: Node<BinOp>,
+		rhs: Box<Node<Expr<'a>>>,
+	},
+	UnOp {
+		expr: Box<Node<Expr<'a>>>,
+		op: Node<UnOp>,
+	},
+	Let {
+		bindings: Vec<LetBinding<'a>>,
+	},
+	AttrSet {
+		attrs: Vec<Node<Attr<'a>>>,
+	},
+	List {
+		elements: Vec<Node<Expr<'a>>>,
+	},
+	AccessAttr {
+		expr: Box<Node<Expr<'a>>>,
+		path: Node<AttrPath<'a>>,
+		or: Option<Box<Node<Expr<'a>>>>,
+	},
+	HasAttr {
+		expr: Box<Node<Expr<'a>>>,
+		path: Node<AttrPath<'a>>,
+	},
+	Paren(Box<Node<Expr<'a>>>),
+	Ident(&'a str),
+	Num(Num),
+	Str(&'a str),
 }
 
 #[derive(Clone, Debug)]
 pub struct LetBinding<'a> {
-    pub id: Node<Pattern<'a>>,
-    pub value: Node<Expr<'a>>,
+	pub id: Node<Pattern<'a>>,
+	pub value: Node<Expr<'a>>,
 }
 
 #[derive(Clone, Debug)]
 pub struct AttrPath<'a> {
-    pub parts: Vec<Node<AttrPathPart<'a>>>,
+	pub parts: Vec<Node<AttrPathPart<'a>>>,
 }
 
 #[derive(Clone, Debug)]
 pub enum AttrPathPart<'a> {
-    Ident(&'a str),
-    Str(&'a str),
-    Num(i64),
-    Expr(Expr<'a>),
+	Ident(&'a str),
+	Str(&'a str),
+	Num(i64),
+	Expr(Expr<'a>),
 }
 
 #[derive(Clone, Debug)]
 pub struct Attr<'a> {
-    pub path: Node<AttrPath<'a>>,
-    pub value: Option<Node<Expr<'a>>>,
+	pub path: Node<AttrPath<'a>>,
+	pub value: Option<Node<Expr<'a>>>,
 }

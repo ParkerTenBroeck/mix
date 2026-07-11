@@ -2,53 +2,53 @@ use crate::bytecode::{CodeLocOffset, ExprLoc, LambdaId, StrId};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum OpCode {
-    Add,
-    Sub,
-    Mul,
-    Div,
-    Rem,
+	Add,
+	Sub,
+	Mul,
+	Div,
+	Rem,
 
-    Eq,
-    Ne,
-    Lt,
-    Lte,
-    Gt,
-    Gte,
+	Eq,
+	Ne,
+	Lt,
+	Lte,
+	Gt,
+	Gte,
 
-    Not,
-    Neg,
+	Not,
+	Neg,
 
-    And(CodeLocOffset),
-    Or(CodeLocOffset),
-    LogImp(CodeLocOffset),
+	And(CodeLocOffset),
+	Or(CodeLocOffset),
+	LogImp(CodeLocOffset),
 
-    If(CodeLocOffset),
+	If(CodeLocOffset),
 
-    CreateAttrSet,
-    InitAttrExpr(ExprLoc),
-    FinalizeAttrSetRec,
-    FinalizeAttrSet,
+	CreateAttrSet,
+	InitAttrExpr(ExprLoc),
+	FinalizeAttrSetRec,
+	FinalizeAttrSet,
 
-    CreateList(usize),
-    AppendList(ExprLoc),
+	CreateList(usize),
+	AppendList(ExprLoc),
 
-    Apply(ExprLoc),
+	Apply(ExprLoc),
 
-    LoadLambda(LambdaId),
-    LoadStr(StrId),
-    LoadInt(i64),
-    LoadFloat(f64),
-    LoadBool(bool),
+	LoadLambda(LambdaId),
+	LoadStr(StrId),
+	LoadInt(i64),
+	LoadFloat(f64),
+	LoadBool(bool),
 
-    LoadScope,
+	LoadScope,
 
-    HasAttr,
-    GetAttr,
-    GetAttrOr(ExprLoc),
+	HasAttr,
+	GetAttr,
+	GetAttrOr(ExprLoc),
 
-    Branch(CodeLocOffset),
+	Branch(CodeLocOffset),
 
-    Pop,
+	Pop,
 
-    Ret,
+	Ret,
 }
