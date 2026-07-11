@@ -7,8 +7,8 @@ use std::{
 use dumpster::{Trace, unsync::Gc};
 
 use crate::{
-	bytecode::{CodePos, LambdaId},
-	runtime::{scope::Scope, thunk::Thunk},
+	bytecode::LambdaId,
+	runtime::{lazy::LazyValue, scope::Scope},
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -115,68 +115,6 @@ impl std::fmt::Debug for NativeLambda {
 pub enum Lambda {
 	Lambda { scope: Scope, lambda: LambdaId },
 	// NativeLambda(NativeLambda),
-}
-
-#[derive(Clone, Debug, Trace)]
-pub enum LazyValue {
-	Thunk(Thunk),
-	Value(Value),
-}
-
-impl<T: Into<Value>> From<T> for LazyValue {
-	fn from(value: T) -> Self {
-		Self::Value(value.into())
-	}
-}
-
-impl LazyValue {
-	pub fn construct_begin(code: CodePos) -> Self {
-		Self::Thunk(Thunk::construct_begin(code))
-	}
-
-	pub fn construct_end(&self, scope: Scope) -> bool {
-		match self {
-			LazyValue::Thunk(thunk) => thunk.construct_end(scope),
-			_ => false,
-		}
-	}
-
-	pub fn try_get_value_mut(&mut self) -> Result<Value, Thunk> {
-		match self {
-			LazyValue::Thunk(thunk) => match thunk.get_value() {
-				Some(value) => {
-					*self = LazyValue::Value(value.clone());
-					Ok(value)
-				}
-				None => Err(thunk.clone()),
-			},
-			LazyValue::Value(value) => Ok(value.clone()),
-		}
-	}
-
-	pub fn try_get_value(&self) -> Result<Value, Thunk> {
-		match self {
-			LazyValue::Thunk(thunk) => match thunk.get_value() {
-				Some(value) => Ok(value),
-				None => Err(thunk.clone()),
-			},
-			LazyValue::Value(value) => Ok(value.clone()),
-		}
-	}
-
-	pub fn try_into_value(self) -> Result<Value, Thunk> {
-		match self {
-			LazyValue::Thunk(thunk) => match thunk.get_value() {
-				Some(value) => Ok(value),
-				None => Err(thunk),
-			},
-			LazyValue::Value(value) => Ok(value),
-		}
-	}
-
-	pub fn uneval(code: CodePos, scope: Scope) -> Self {
-		Self::Thunk(Thunk::uneval(code, scope))
-	}
 }
 
 #[derive(Clone, Default, Debug, Trace)]

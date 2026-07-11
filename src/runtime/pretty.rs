@@ -1,13 +1,14 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt;
 
+use crate::runtime::lazy::LazyValue;
 use crate::{
 	bytecode::CodePos,
 	files::Span,
 	runtime::{
 		Runtime,
 		thunk::{Thunk, ThunkSnapshot},
-		value::{AttrSet, Lambda, LazyValue, List, Value},
+		value::{AttrSet, Lambda, List, Value},
 	},
 };
 
@@ -73,9 +74,9 @@ impl<'rt, 'a> PrettyPrinter<'rt, 'a> {
 	}
 
 	fn count_lazy(&mut self, value: &LazyValue, seen: &mut HashSet<ObjectKey>) {
-		match value {
-			LazyValue::Thunk(thunk) => self.count_thunk(thunk, seen),
-			LazyValue::Value(value) => self.count_value(value, seen),
+		match value.try_get_value() {
+			Err(thunk) => self.count_thunk(&thunk, seen),
+			Ok(value) => self.count_value(&value, seen),
 		}
 	}
 
@@ -126,9 +127,9 @@ impl<'rt, 'a> PrettyPrinter<'rt, 'a> {
 	}
 
 	fn render_lazy_inner(&mut self, value: &LazyValue, indent: usize) -> String {
-		match value {
-			LazyValue::Thunk(thunk) => self.render_thunk(thunk, indent),
-			LazyValue::Value(value) => self.render_value_inner(value, indent),
+		match value.try_get_value() {
+			Err(thunk) => self.render_thunk(&thunk, indent),
+			Ok(value) => self.render_value_inner(&value, indent),
 		}
 	}
 

@@ -1,4 +1,5 @@
 pub mod eval;
+pub mod lazy;
 pub mod pretty;
 pub mod scope;
 pub mod thunk;
@@ -11,12 +12,7 @@ use crate::{
 	mir::lowerer::MirLowerer,
 	parse::Parser,
 	report::Reports,
-	runtime::{
-		eval::Evaluator,
-		scope::Scope,
-		trace::ErrorTrace,
-		value::{LazyValue, Value},
-	},
+	runtime::{eval::Evaluator, lazy::LazyValue, scope::Scope, trace::ErrorTrace, value::Value},
 };
 
 #[derive(Debug)]

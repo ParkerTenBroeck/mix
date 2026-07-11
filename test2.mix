@@ -51,6 +51,9 @@
     value = fib 10,
 
    */
+
+    recursive = [recursive];
+
     foo = {
         meow = 1 . 2;
         bwa  = foo: 1,

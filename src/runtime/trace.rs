@@ -83,6 +83,10 @@ impl<'a> ErrorTrace<'a> {
 					kind: map_frame_kind(&frame.kind),
 				}),
 				PotentialFrame::PotentialDeep(_) => None,
+				PotentialFrame::DeepEval(code_pos) => Some(FrameInfo {
+					span: eval.runtime.program.find_pos(*code_pos),
+					kind: FrameKind::LazyEval,
+				}),
 			})
 			.collect();
 
