@@ -262,3 +262,55 @@ impl<'a> From<ExpectedIdent<'a>> for Report<'_> {
 		}
 	}
 }
+
+#[derive(Clone, Debug)]
+pub struct DuplicatePatternRest {
+	pub span: Span,
+	pub first: Span,
+}
+impl From<DuplicatePatternRest> for Report<'_> {
+	fn from(err: DuplicatePatternRest) -> Self {
+		Self {
+			level: ReportLevel::Error,
+			span: err.span,
+			title: Cow::Borrowed("duplicate .. in pattern"),
+			annotations: vec![
+				ReportAnnotation::primary(err.span),
+				ReportAnnotation::context(err.first, "first used here"),
+			],
+			helps: vec![],
+		}
+	}
+}
+
+#[derive(Clone, Debug)]
+pub struct NonTrailingPatternRestWarning {
+	pub span: Span,
+}
+impl From<NonTrailingPatternRestWarning> for Report<'_> {
+	fn from(err: NonTrailingPatternRestWarning) -> Self {
+		Self {
+			level: ReportLevel::Error,
+			span: err.span,
+			title: Cow::Borrowed(".. in pattern should be trailing"),
+			annotations: vec![ReportAnnotation::primary(err.span)],
+			helps: vec![],
+		}
+	}
+}
+
+#[derive(Clone, Debug)]
+pub struct NonTrailingListTrail {
+	pub span: Span,
+}
+impl From<NonTrailingListTrail> for Report<'_> {
+	fn from(err: NonTrailingListTrail) -> Self {
+		Self {
+			level: ReportLevel::Error,
+			span: err.span,
+			title: Cow::Borrowed(".. cannot appear in middle of list"),
+			annotations: vec![ReportAnnotation::primary(err.span)],
+			helps: vec![],
+		}
+	}
+}

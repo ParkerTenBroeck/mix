@@ -1,24 +1,17 @@
-use std::{borrow::Cow, ops::Not};
+use std::ops::Not;
 
 use crate::{
 	files::{Node, Span},
 	mir,
+	mir::analysis::attrset::StaticAttrBuilder,
 	parse::ast,
-	report::{Reports, mir::DuplicateAttrError},
+	report::Reports,
 };
 
 pub type MirLowerResult<'a> = (Result<Node<mir::Expr<'a>>, ()>, Reports<'a>);
 
 pub struct MirLowerer<'a> {
-	reports: Reports<'a>,
-}
-
-#[derive(Clone, Debug)]
-struct StaticAttrBuilder<'a> {
-	name: Node<&'a str>,
-	full_span: Span,
-	value: Option<Node<mir::Expr<'a>>>,
-	children: Vec<StaticAttrBuilder<'a>>,
+	pub(crate) reports: Reports<'a>,
 }
 
 impl<'a> MirLowerer<'a> {
@@ -38,7 +31,7 @@ impl<'a> MirLowerer<'a> {
 	fn lower_expr(&mut self, Node(expr, span): Node<ast::Expr<'a>>) -> Node<mir::Expr<'a>> {
 		let expr = match expr {
 			ast::Expr::Lambda(lambda) => mir::Expr::Lambda(mir::Lambda {
-				arg: self.lower_pattern(lambda.arg),
+				arg: self.lower_lambda_arg(lambda.arg),
 				body: Box::new(self.lower_expr(*lambda.body)),
 			}),
 			ast::Expr::FuncApp { func, arg } => mir::Expr::FuncApp {
@@ -60,13 +53,7 @@ impl<'a> MirLowerer<'a> {
 				op: Node(self.lower_unop(op.0), op.1),
 			},
 			ast::Expr::Let { bindings } => mir::Expr::Let {
-				bindings: bindings
-					.into_iter()
-					.map(|binding| mir::LetBinding {
-						id: self.lower_pattern(binding.id),
-						value: self.lower_expr(binding.value),
-					})
-					.collect(),
+				bindings: self.lower_let_bindings(bindings),
 			},
 			ast::Expr::AttrSet { attrs } => mir::Expr::AttrSet(self.lower_attr_set(attrs)),
 			ast::Expr::List { elements } => mir::Expr::List {
@@ -97,7 +84,88 @@ impl<'a> MirLowerer<'a> {
 	fn lower_pattern(&mut self, pattern: Node<ast::Pattern<'a>>) -> Node<mir::Pattern<'a>> {
 		pattern.map(|pattern| mir::Pattern {
 			binding: pattern.binding,
+			ty: pattern.ty.map(|ty| self.lower_type(ty)),
+			destruct: pattern
+				.destruct
+				.map(|destruct| self.lower_pattern_destruct_kind(destruct)),
 		})
+	}
+
+	fn lower_pattern_destruct_kind(
+		&mut self,
+		destruct: Node<ast::PatternDestructKind<'a>>,
+	) -> Node<mir::PatternDestructKind<'a>> {
+		destruct.map(|destruct| match destruct {
+			ast::PatternDestructKind::AttrSet { fields, strict } => {
+				self.lower_attr_pattern_destruct(fields, strict)
+			}
+			ast::PatternDestructKind::List { elements, kind } => mir::PatternDestructKind::List {
+				elements: elements
+					.into_iter()
+					.map(|element| self.lower_pattern(element))
+					.collect(),
+				kind: self.lower_pattern_list_kind(kind),
+			},
+		})
+	}
+
+	fn lower_lambda_arg(&mut self, arg: Node<ast::Pattern<'a>>) -> Node<mir::Pattern<'a>> {
+		let arg = self.lower_pattern(arg);
+		self.verify_lambda_pattern_bindings(&arg);
+		arg
+	}
+
+	fn lower_let_bindings(
+		&mut self,
+		bindings: Vec<ast::LetBinding<'a>>,
+	) -> Vec<mir::LetBinding<'a>> {
+		let bindings: Vec<_> = bindings
+			.into_iter()
+			.map(|binding| mir::LetBinding {
+				id: self.lower_pattern(binding.id),
+				value: self.lower_expr(binding.value),
+			})
+			.collect();
+		self.verify_let_pattern_bindings(&bindings);
+		bindings
+	}
+
+	fn lower_attr_pattern_destruct(
+		&mut self,
+		fields: Vec<Node<ast::AttrPattern<'a>>>,
+		strict: bool,
+	) -> mir::PatternDestructKind<'a> {
+		mir::PatternDestructKind::AttrSet {
+			fields: self.lower_attr_pattern_fields(fields),
+			strict,
+		}
+	}
+
+	fn lower_attr_pattern_fields(
+		&mut self,
+		fields: Vec<Node<ast::AttrPattern<'a>>>,
+	) -> Vec<Node<mir::AttrPattern<'a>>> {
+		fields
+			.into_iter()
+			.map(|field| {
+				field.map(|field| mir::AttrPattern {
+					attr: field.attr,
+					pattern: self.lower_pattern(field.pattern),
+				})
+			})
+			.collect()
+	}
+
+	fn lower_pattern_list_kind(&self, kind: ast::PatternListKind) -> mir::PatternListKind {
+		match kind {
+			ast::PatternListKind::Strict => mir::PatternListKind::Strict,
+			ast::PatternListKind::TrailLeft => mir::PatternListKind::TrailLeft,
+			ast::PatternListKind::TrailRight => mir::PatternListKind::TrailRight,
+		}
+	}
+
+	fn lower_type(&mut self, ty: Node<ast::Type<'a>>) -> Node<mir::Type<'a>> {
+		ty.map(|ty| mir::Type { name: ty.name })
 	}
 
 	fn lower_binop(
@@ -149,90 +217,6 @@ impl<'a> MirLowerer<'a> {
 				.collect(),
 			dynamic_attrs,
 		}
-	}
-
-	fn static_attr_parts(&self, path: &Node<ast::AttrPath<'a>>) -> Option<Vec<Node<&'a str>>> {
-		path.0
-			.parts
-			.iter()
-			.map(|part| match part.0 {
-				ast::AttrPathPart::Ident(name) | ast::AttrPathPart::Str(name) => {
-					Some(Node(name, part.1))
-				}
-				ast::AttrPathPart::Expr(_) => None,
-				_ => todo!(),
-			})
-			.collect()
-	}
-
-	fn insert_static_attr(
-		&mut self,
-		attrs: &mut Vec<StaticAttrBuilder<'a>>,
-		parts: &[Node<&'a str>],
-		value: Option<Node<mir::Expr<'a>>>,
-		attr_span: Span,
-		prefix: String,
-	) {
-		let Node(name, name_span) = parts[0];
-		let path_name = if prefix.is_empty() {
-			name.to_string()
-		} else {
-			format!("{prefix}.{name}")
-		};
-
-		if parts.len() == 1 {
-			if let Some(existing) = attrs.iter().find(|existing| existing.name.0 == name) {
-				self.reports.emit(DuplicateAttrError {
-					span: name_span,
-					first: existing.full_span,
-					name: Cow::Owned(path_name),
-				});
-				return;
-			}
-
-			attrs.push(StaticAttrBuilder {
-				name: Node(name, name_span),
-				full_span: attr_span,
-				value,
-				children: vec![],
-			});
-			return;
-		}
-
-		if let Some(existing) = attrs.iter_mut().find(|existing| existing.name.0 == name) {
-			if existing.value.is_some() {
-				self.reports.emit(DuplicateAttrError {
-					span: name_span,
-					first: existing.full_span,
-					name: Cow::Owned(path_name),
-				});
-				return;
-			}
-
-			self.insert_static_attr(
-				&mut existing.children,
-				&parts[1..],
-				value,
-				attr_span,
-				path_name,
-			);
-			return;
-		}
-
-		let mut child = StaticAttrBuilder {
-			name: Node(name, name_span),
-			full_span: attr_span,
-			value: None,
-			children: vec![],
-		};
-		self.insert_static_attr(
-			&mut child.children,
-			&parts[1..],
-			value,
-			attr_span,
-			path_name,
-		);
-		attrs.push(child);
 	}
 
 	fn finish_static_attr(&mut self, attr: StaticAttrBuilder<'a>) -> Node<mir::StaticAttr<'a>> {

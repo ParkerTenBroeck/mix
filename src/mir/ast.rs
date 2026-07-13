@@ -1,8 +1,40 @@
 use crate::files::Node;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Type<'a> {
+	pub name: Node<&'a str>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AttrPattern<'a> {
+	pub attr: Node<&'a str>,
+	pub pattern: Node<Pattern<'a>>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PatternListKind {
+	Strict,
+	TrailLeft,
+	TrailRight,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum PatternDestructKind<'a> {
+	AttrSet {
+		fields: Vec<Node<AttrPattern<'a>>>,
+		strict: bool,
+	},
+	List {
+		elements: Vec<Node<Pattern<'a>>>,
+		kind: PatternListKind,
+	},
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Pattern<'a> {
 	pub binding: Option<Node<&'a str>>,
+	pub ty: Option<Node<Type<'a>>>,
+	pub destruct: Option<Node<PatternDestructKind<'a>>>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

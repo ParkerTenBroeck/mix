@@ -134,13 +134,7 @@ impl<'a> Lexer<'a> {
 			Some('.') => match self.peek_char() {
 				Some('.') => {
 					self.next_char();
-					match self.peek_char() {
-						Some('.') => Ok(Token::DotDotDot),
-						_ => {
-							self.pos -= 1;
-							Ok(Token::Dot)
-						}
-					}
+					Ok(Token::DotDot)
 				}
 				_ => Ok(Token::Dot),
 			},

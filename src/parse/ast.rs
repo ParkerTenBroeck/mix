@@ -6,20 +6,27 @@ pub struct Type<'a> {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct AttrPattern<'a>{
-    pub attr: Node<&'a str>,
-    pub pattern: Option<Node<Pattern<'a>>>,
+pub struct AttrPattern<'a> {
+	pub attr: Node<&'a str>,
+	pub pattern: Node<Pattern<'a>>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PatternListKind {
+	Strict,
+	TrailLeft,
+	TrailRight,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum PatternKind<'a> {
+pub enum PatternDestructKind<'a> {
 	AttrSet {
 		fields: Vec<Node<AttrPattern<'a>>>,
 		strict: bool,
 	},
 	List {
 		elements: Vec<Node<Pattern<'a>>>,
-		strict: bool,
+		kind: PatternListKind,
 	},
 }
 
@@ -27,7 +34,7 @@ pub enum PatternKind<'a> {
 pub struct Pattern<'a> {
 	pub binding: Option<Node<&'a str>>,
 	pub ty: Option<Node<Type<'a>>>,
-	pub kind: Option<Node<PatternKind<'a>>>,
+	pub destruct: Option<Node<PatternDestructKind<'a>>>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
