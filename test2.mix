@@ -52,6 +52,7 @@
 
    */
 
+    meow = foo@[{a=[_, _, _],b,c}, b :: int, c] :: Meow : bar;
     recursive = [recursive];
 
     foo = {

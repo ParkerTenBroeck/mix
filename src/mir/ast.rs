@@ -3,8 +3,6 @@ use crate::files::Node;
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Pattern<'a> {
 	pub binding: Option<Node<&'a str>>,
-	pub destruct: Vec<()>,
-	pub strict_destruct: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

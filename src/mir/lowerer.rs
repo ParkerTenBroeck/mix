@@ -97,8 +97,6 @@ impl<'a> MirLowerer<'a> {
 	fn lower_pattern(&mut self, pattern: Node<ast::Pattern<'a>>) -> Node<mir::Pattern<'a>> {
 		pattern.map(|pattern| mir::Pattern {
 			binding: pattern.binding,
-			destruct: pattern.destruct,
-			strict_destruct: pattern.strict_destruct,
 		})
 	}
 

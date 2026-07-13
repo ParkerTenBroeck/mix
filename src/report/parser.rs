@@ -228,3 +228,37 @@ impl From<IntError> for Report<'_> {
 		}
 	}
 }
+
+#[derive(Clone, Debug)]
+pub struct UnexpectedTokenPattern<'a> {
+	pub span: Span,
+	pub got: Token<'a>,
+}
+impl<'a> From<UnexpectedTokenPattern<'a>> for Report<'_> {
+	fn from(err: UnexpectedTokenPattern) -> Self {
+		Self {
+			level: ReportLevel::Error,
+			span: err.span,
+			title: format!("expected '{{' or '[' in pattern got {:#}", err.got).into(),
+			annotations: vec![ReportAnnotation::primary(err.span)],
+			helps: vec![],
+		}
+	}
+}
+
+#[derive(Clone, Debug)]
+pub struct ExpectedIdent<'a> {
+	pub span: Span,
+	pub got: Token<'a>,
+}
+impl<'a> From<ExpectedIdent<'a>> for Report<'_> {
+	fn from(err: ExpectedIdent) -> Self {
+		Self {
+			level: ReportLevel::Error,
+			span: err.span,
+			title: format!("expected ident got {:#}", err.got).into(),
+			annotations: vec![ReportAnnotation::primary(err.span)],
+			helps: vec![],
+		}
+	}
+}

@@ -1,5 +1,5 @@
 use super::trace::*;
-use std::borrow::Cow;
+use std::{borrow::Cow, collections::HashSet};
 
 use crate::{
 	bytecode::{CodeLocOffset, CodePos, OpCode},
@@ -57,6 +57,8 @@ pub struct Evaluator<'a, 'b> {
 
 	pub frame_stack: Vec<PotentialFrame>,
 	pub curr_frame: Frame,
+
+	pub deeply_evaluated: HashSet<usize>,
 }
 
 macro_rules! checked_numeric_op {
@@ -301,6 +303,7 @@ impl<'a, 'b> Evaluator<'a, 'b> {
 			frame_stack: Default::default(),
 			value_stack: Default::default(),
 			curr_frame: Frame::new(pos, scope, frame_kind),
+			deeply_evaluated: Default::default(),
 		};
 		let res = eval.run_loop();
 		res.map_err(|kind| ErrorTrace::build(&eval, kind))
@@ -437,15 +440,21 @@ impl<'a, 'b> Evaluator<'a, 'b> {
 		}
 	}
 
-	fn spill_deep_value(&mut self, value: &Value) -> Result<(), EvalError<'a>>{
+	fn spill_deep_value(&mut self, value: &Value) -> Result<(), EvalError<'a>> {
 		match &value {
 			Value::AttrSet(attrs) => {
+				if !self.deeply_evaluated.insert(attrs.id()) {
+					return Ok(());
+				}
 				for lazy in attrs.values() {
 					self.frame_stack
 						.push(PotentialFrame::PotentialDeep(lazy.clone()));
 				}
 			}
 			Value::List(list) => {
+				if !self.deeply_evaluated.insert(list.id()) {
+					return Ok(());
+				}
 				for lazy in list.iter() {
 					self.frame_stack
 						.push(PotentialFrame::PotentialDeep(lazy.clone()));
@@ -472,13 +481,13 @@ impl<'a, 'b> Evaluator<'a, 'b> {
 			}
 			_ => {}
 		}
-		
+
 		// if the current frame is in a deep eval spill inner values onto evaluation stack
 		match &self.curr_frame.kind {
 			FrameKind::ThunkEvalDeep(_) | FrameKind::ThunkEvalDeepRoot(_) => {
 				self.frame_stack.push(PotentialFrame::DeepEval(prev));
 				self.spill_deep_value(&ret)?;
-			},
+			}
 			_ => {}
 		}
 
@@ -489,7 +498,6 @@ impl<'a, 'b> Evaluator<'a, 'b> {
 			}
 			_ => {}
 		}
-
 
 		while !self.frame_stack.is_empty() {
 			match self.pop_frame()? {

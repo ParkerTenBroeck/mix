@@ -7,9 +7,10 @@ use crate::{
 	report::{
 		Reports,
 		parser::{
-			ExpectedClosingDelimError, ExpectedEofError, FloatError, FuncAppInListError,
-			FuncDefInListError, IntError, MismatchedDelimError, UnclosedDelimError,
-			UnexpectedTokenAttrPathError, UnexpectedTokenExprError,
+			ExpectedClosingDelimError, ExpectedEofError, ExpectedIdent, FloatError,
+			FuncAppInListError, FuncDefInListError, IntError, MismatchedDelimError,
+			UnclosedDelimError, UnexpectedTokenAttrPathError, UnexpectedTokenExprError,
+			UnexpectedTokenPattern,
 		},
 	},
 };
@@ -265,22 +266,126 @@ impl<'a> Parser<'a> {
 		}
 	}
 
-	fn parse_pattern(&mut self) -> Node<ast::Pattern<'a>> {
-		let start = self.curr.1;
-
-		let binding = match self.curr.0 {
+	fn try_parse_ident(&mut self) -> Option<Node<&'a str>> {
+		match self.curr.0 {
 			Token::Ident(ident) => {
 				self.next();
 				Some(Node(ident, self.last.1))
 			}
 			_ => None,
+		}
+	}
+
+	fn parse_ident(&mut self) -> Node<&'a str> {
+		match self.curr.0 {
+			Token::Ident(ident) => {
+				self.next();
+				Node(ident, self.last.1)
+			}
+			_ => {
+				self.reports.emit(ExpectedIdent {
+					span: self.curr.1,
+					got: self.curr.0,
+				});
+				Node("<ERR>", self.last.1)
+			}
+		}
+	}
+
+	fn parse_type(&mut self) -> Node<ast::Type<'a>> {
+		let start = self.curr.1;
+
+		let name = self.parse_ident();
+
+		let ty = ast::Type { name };
+
+		let end = self.last.1;
+		Node(ty, start.merge(end))
+	}
+
+	fn parse_pattern_kind(&mut self) -> Node<ast::PatternKind<'a>> {
+		let start = self.curr.1;
+
+		let kind = match self.curr.0 {
+			Token::LBrace => {
+				self.next();
+				let mut fields = Vec::new();
+
+				loop {
+					if matches!(
+						self.curr.0,
+						Token::RParen | Token::RBrace | Token::RBrack | Token::Eof
+					) {
+						break;
+					}
+                    let start = self.curr.1;
+                    let attr = self.parse_ident();
+                    let pattern = self.consume_if(Token::Assign).then(||self.parse_pattern());
+                    let field = ast::AttrPattern{attr, pattern};
+					fields.push(Node(field, start.merge(self.last.1)));
+					if !(self.consume_if(Token::Comma) || self.consume_if(Token::Semicolon)) {
+						break;
+					}
+				}
+
+				self.close_delim(Node(Delim::Brace, start));
+				ast::PatternKind::AttrSet {
+					fields,
+					strict: false,
+				}
+			}
+			Token::LBrack => {
+				self.next();
+				let mut elements = Vec::new();
+
+				loop {
+					if matches!(
+						self.curr.0,
+						Token::RParen | Token::RBrace | Token::RBrack | Token::Eof
+					) {
+						break;
+					}
+					elements.push(self.parse_pattern());
+					if !(self.consume_if(Token::Comma)) {
+						break;
+					}
+				}
+
+				self.close_delim(Node(Delim::Brack, start));
+				ast::PatternKind::List {
+					elements,
+					strict: false,
+				}
+			}
+			got => {
+				self.reports.emit(UnexpectedTokenPattern {
+					span: self.curr.1,
+					got,
+				});
+				ast::PatternKind::AttrSet {
+					fields: Default::default(),
+					strict: false,
+				}
+			}
 		};
 
-		let pattern = ast::Pattern {
-			binding,
-			destruct: vec![],
-			strict_destruct: false,
-		};
+		let end = self.last.1;
+
+		Node(kind, start.merge(end))
+	}
+
+	fn parse_pattern(&mut self) -> Node<ast::Pattern<'a>> {
+		let start = self.curr.1;
+
+		let binding = self.try_parse_ident();
+
+		let kind =
+			(binding.is_none() || self.consume_if(Token::At)).then(|| self.parse_pattern_kind());
+		let ty = self
+			.consume_if(Token::ColonColon)
+			.then(|| self.parse_type());
+
+		let pattern = ast::Pattern { binding, kind, ty };
 
 		let end = self.last.1;
 
@@ -585,8 +690,11 @@ impl<'a> Parser<'a> {
 					self.next();
 					let num = match str.parse() {
 						Ok(num) => num,
-						Err(_) => {
-							todo!();
+						Err(err) => {
+							self.reports.emit(IntError{
+                            span: start.merge(self.curr.1),
+                            err,
+                        });
 							0
 						}
 					};
