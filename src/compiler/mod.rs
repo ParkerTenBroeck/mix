@@ -1,3 +1,5 @@
+use std::path;
+
 use crate::{
 	bytecode::{ByteCodeBuilder, CodePos, ExprBuilder, OpCode, ProgramBuilder},
 	files::Node,
@@ -12,10 +14,10 @@ impl Compiler {
 		Self {}
 	}
 
-	pub fn compile_top_level(
+	pub fn compile_top_level<'a>(
 		&mut self,
 		mut builder: impl ProgramBuilder,
-		expr: &Node<mir::Expr>,
+		expr: &Node<mir::Expr<'a>>,
 	) -> CodePos {
 		let (_, loc) = builder.emit_expr(expr.1, |eb| {
 			self.compile_expr(eb, expr);
@@ -23,10 +25,66 @@ impl Compiler {
 		loc
 	}
 
+	fn compile_lambda_pattern_rec<'a, 'b>(
+		&mut self,
+		builder: &'b mut ExprBuilder<'a>,
+		pattern: &Node<mir::Pattern<'_>>,
+	) {
+		let eval = pattern.0.destruct.is_some() || pattern.0.ty.is_some();
+
+		if eval {
+			builder.emit(OpCode::EvalThunk);
+		}
+
+		if let Some(binding) = &pattern.0.binding
+			&& binding.0 != "_"
+		{
+			if eval {
+				builder.emit(OpCode::DupV);
+			}
+			builder.emit_load_str(binding.0);
+			if eval {
+				builder.emit(OpCode::BindValueScope);
+			} else {
+				builder.emit(OpCode::BindThunkScope);
+			}
+		}
+
+		if let Some(destruct) = &pattern.0.destruct {
+			match &destruct.0 {
+				mir::PatternDestructKind::AttrSet { fields, strict } => {
+					for (i, field) in fields.iter().enumerate() {
+						if i != fields.len() - 1 {
+							builder.emit(OpCode::DupV);
+						}
+
+						builder.emit_load_str(field.0.attr.0).emit(OpCode::GetAttr);
+						self.compile_lambda_pattern_rec(builder, &field.0.pattern);
+					}
+				}
+				mir::PatternDestructKind::List { elements, kind } => {
+					// builder.emit(OpCode::PopV);
+				}
+			}
+		}
+
+		if let Some(_) = &pattern.0.ty {
+			builder.emit(OpCode::PopV);
+		}
+	}
+
+	fn compile_lambda_pattern<'a, 'b>(
+		&mut self,
+		builder: &'b mut ExprBuilder<'a>,
+		pattern: &Node<mir::Pattern<'_>>,
+	) {
+		self.compile_lambda_pattern_rec(builder, pattern);
+	}
+
 	fn compile_expr<'a, 'b>(
 		&mut self,
 		builder: &'b mut ExprBuilder<'a>,
-		expr: &Node<mir::Expr>,
+		expr: &Node<mir::Expr<'_>>,
 	) -> &'b mut ExprBuilder<'a> {
 		let Node(ast_expr, span) = expr;
 
@@ -34,7 +92,7 @@ impl Compiler {
 			mir::Expr::Lambda(lambda) => {
 				let arg_name = lambda.arg.0.binding.map(|name| name.0);
 				builder.emit_load_lambda(*span, arg_name, |builder| {
-					//TODO how do I want to do argument stuff?
+					self.compile_lambda_pattern(builder, &lambda.arg);
 					self.compile_expr(builder, &lambda.body);
 				});
 			}
@@ -136,7 +194,7 @@ impl Compiler {
 				self.compile_expr(builder, expr);
 				for part in &path.0.parts {
 					self.compile_attr_part(builder, part);
-					builder.emit(OpCode::GetAttr);
+					builder.emit(OpCode::GetAttr).emit(OpCode::EvalThunk);
 				}
 			}
 			mir::Expr::HasAttr { expr, path } => {}

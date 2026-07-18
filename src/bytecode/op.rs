@@ -46,9 +46,18 @@ pub enum OpCode {
 	GetAttr,
 	GetAttrOr(ExprLoc),
 
+	EvalThunk,
+
+	BindThunkScope,
+	BindValueScope,
+
 	Branch(CodeLocOffset),
 
-	Pop,
+	PopV,
+	DupV,
+
+	PopT,
+	DupT,
 
 	Ret,
 }

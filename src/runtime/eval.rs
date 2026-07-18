@@ -54,6 +54,7 @@ pub struct Evaluator<'a, 'b> {
 	pub runtime: &'b Runtime<'a>,
 
 	pub value_stack: Vec<Value>,
+	pub thunk_stack: Vec<LazyValue>,
 
 	pub frame_stack: Vec<PotentialFrame>,
 	pub curr_frame: Frame,
@@ -300,8 +301,9 @@ impl<'a, 'b> Evaluator<'a, 'b> {
 
 		let mut eval = Self {
 			runtime,
-			frame_stack: Default::default(),
 			value_stack: Default::default(),
+			thunk_stack: Default::default(),
+			frame_stack: Default::default(),
 			curr_frame: Frame::new(pos, scope, frame_kind),
 			deeply_evaluated: Default::default(),
 		};
@@ -375,6 +377,17 @@ impl<'a, 'b> Evaluator<'a, 'b> {
 		}
 	}
 
+	fn push_thunk(&mut self, value: LazyValue) -> Result<(), EvalError<'a>> {
+		self.thunk_stack.push(value);
+		Ok(())
+	}
+
+	fn pop_thunk(&mut self) -> Result<LazyValue, EvalError<'a>> {
+		self.thunk_stack
+			.pop()
+			.ok_or(EvalError::ByteCode("thunk stack"))
+	}
+
 	fn begin_frame(&mut self, mut frame: Frame) -> Result<(), EvalError<'a>> {
 		std::mem::swap(&mut self.curr_frame, &mut frame);
 		self.frame_stack.push(PotentialFrame::Realized(frame));
@@ -399,24 +412,19 @@ impl<'a, 'b> Evaluator<'a, 'b> {
 		self.curr_frame.pos = self.curr_frame.pos + off;
 	}
 
-	fn get_attr(&mut self) -> Result<LazyValue, EvalError<'a>> {
-		match self.pop_value()? {
-			Value::String(name) => match self.pop_value()? {
-				Value::AttrSet(attrset) => {
-					let Some(lazy) = attrset.get(&name) else {
-						return Err(EvalError::MissingAttr(
-							format!("attribute {name:?} was not found in attrset").into(),
-						));
-					};
-					Ok(lazy.clone())
-				}
+	fn get_attr(
+		&mut self,
+		indexing: &Value,
+		index: &Value,
+	) -> Result<Option<LazyValue>, EvalError<'a>> {
+		match index {
+			Value::String(name) => match indexing {
+				Value::AttrSet(attrset) => Ok(attrset.get(name).cloned()),
 				Value::List(list) => {
 					if name != "len" {
-						Err(EvalError::MissingAttr(
-							format!("attribute {name:?} was not found in list").into(),
-						))
+						Ok(None)
 					} else {
-						Ok(Value::Int(list.len() as i64).into())
+						Ok(Some(Value::Int(list.len() as i64).into()))
 					}
 				}
 				value => Err(EvalError::TypeMismatch {
@@ -424,15 +432,15 @@ impl<'a, 'b> Evaluator<'a, 'b> {
 					got: value.ty(),
 				}),
 			},
-			Value::Int(index) => {
-				let list = self.pop_list()?;
-				let Some(lazy) = list.get(index.try_into().unwrap_or(usize::MAX)) else {
-					return Err(EvalError::MissingAttr(
-						format!("index {index} is not in list").into(),
-					));
-				};
-				Ok(lazy.clone())
-			}
+			Value::Int(index) => match indexing {
+				Value::List(list) => {
+					Ok(list.get((*index).try_into().unwrap_or(usize::MAX)).cloned())
+				}
+				value => Err(EvalError::TypeMismatch {
+					expected: ValueType::List,
+					got: value.ty(),
+				}),
+			},
 			value => Err(EvalError::TypeMismatch {
 				expected: ValueType::AttrSet,
 				got: value.ty(),
@@ -532,24 +540,17 @@ impl<'a, 'b> Evaluator<'a, 'b> {
 		let lambda = self.pop_lambda()?;
 
 		let frame = match lambda {
-			Lambda::Lambda { mut scope, lambda } => {
+			Lambda::Lambda { scope, lambda } => {
 				let lambda = self.runtime.program.get_lambda(lambda).ok_or_else(|| {
 					EvalError::Internal(
 						format!("invalid lambda id {} in bytecode", lambda.index()).into(),
 					)
 				})?;
-				let lambda_pos = lambda.code;
 
-				let arg_name = lambda
-					.arg_name
-					.map(|id| self.runtime.program.get_str(id))
-					.unwrap_or("");
 				let thunk = Thunk::uneval_with_scope(arg_pos, self.curr_frame.scope.clone()).into();
+				self.thunk_stack.push(thunk);
 
-				let scope_mut = scope.get_mut();
-				scope_mut.insert(arg_name.into(), thunk);
-
-				Frame::new(lambda_pos, scope, FrameKind::Function)
+				Frame::new(lambda.code, scope, FrameKind::Function)
 			}
 		};
 		self.begin_frame(frame)?;
@@ -743,16 +744,56 @@ impl<'a, 'b> Evaluator<'a, 'b> {
 					self.push_value(Value::Bool(attrset.get(&name).is_some()))?;
 				}
 				OpCode::GetAttr => {
-					let lazy = self.get_attr()?;
-					match lazy.try_get_value() {
-						Ok(ok) => self.push_value(ok)?,
+					let index = self.pop_value()?;
+					let indexing = self.pop_value()?;
+					let lazy = self.get_attr(&indexing, &index)?;
+
+					if let Some(lazy) = lazy {
+						self.push_thunk(lazy);
+					} else {
+						let idx = match index {
+							Value::Bool(bool) => format!("{bool}"),
+							Value::Int(int) => format!("{int}"),
+							Value::Float(float) => format!("{float}"),
+							Value::String(str) => format!("{str:?}"),
+							Value::Path(path_buf) => path_buf.display().to_string(),
+							other => other.ty().to_string(),
+						};
+						break Err(EvalError::MissingAttr(
+							format!("attr {idx} not found for {}", indexing.ty()).into(),
+						));
+					}
+				}
+				OpCode::GetAttrOr(_expr_id) => {
+					let index = self.pop_value()?;
+					let indexing = self.pop_value()?;
+					let lazy = self.get_attr(&indexing, &index)?;
+					if let Some(lazy) = lazy {
+						self.thunk_stack.push(lazy);
+					} else {
+						todo!()
+					}
+				}
+				OpCode::EvalThunk => {
+					let thunk = self.pop_thunk()?;
+					match thunk.try_get_value() {
+						Ok(value) => self.push_value(value)?,
 						Err(thunk) => {
 							let (pos, scope) = thunk.eval_begin().map_err(EvalError::ThunkEval)?;
 							self.begin_frame(Frame::new(pos, scope, FrameKind::ThunkEval(thunk)))?;
 						}
 					}
 				}
-				OpCode::GetAttrOr(_expr_id) => todo!(),
+				OpCode::BindThunkScope => {
+					let attr = self.pop_string()?;
+					let thunk = self.pop_thunk()?;
+					self.curr_frame.scope.get_mut().insert(attr, thunk);
+				}
+				OpCode::BindValueScope => {
+					let attr = self.pop_string()?;
+					let value = self.pop_value()?;
+					self.curr_frame.scope.get_mut().insert(attr, value.into());
+				}
 
 				OpCode::LoadScope => {
 					let name = self.pop_string()?;
@@ -770,7 +811,20 @@ impl<'a, 'b> Evaluator<'a, 'b> {
 					}
 				}
 
-				OpCode::Pop => _ = self.pop_value()?,
+				OpCode::PopV => _ = self.pop_value()?,
+				OpCode::DupV => {
+					let value = self.pop_value()?;
+					self.push_value(value.clone())?;
+					self.push_value(value)?;
+				}
+
+				OpCode::PopT => _ = self.pop_thunk()?,
+				OpCode::DupT => {
+					let thunk = self.pop_thunk()?;
+					self.push_thunk(thunk.clone())?;
+					self.push_thunk(thunk)?;
+				}
+
 				OpCode::Ret => {
 					if let Some(value) = self.ret(prev)? {
 						break Ok(value);

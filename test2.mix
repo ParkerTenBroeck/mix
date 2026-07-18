@@ -39,7 +39,8 @@
 
     
     func = final : {x = 1, y = 1+final.x, z = 1+final.y },
-    x = func x,
+    x = func x;
+
 
 
     value_str = "value",
@@ -51,6 +52,21 @@
     value = fib 10,
 
    */
+    fib = x : if x <= 0 then 0 else if x == 1 then 1 else fib (x-1) + fib (x-2),
+
+    fib20 = fib 33;
+
+    add = x: y: x + y;
+    addOne = add 1;
+
+    meowmeowmeow = add (add 2 3)  (addOne 5);
+
+   test = {x}: false;
+   
+   faalala = test {x=1/0};
+
+    func = final : {x = 1, y = 1+final.x, z = 1+final.y };
+    x = func x;
 
     meow = foo@[{a=[.., _, _, _],b,c}, x :: int, y] :: Meow : bar;
     recursive = [recursive];
@@ -60,6 +76,7 @@
         bwa  = foo: 1,
         bwah = foo: 1,
     },
-    list = [1.2, [2], [44]],
-    number = list.${list.len - 1}.0,
+    list = [1.2, [2], [44]];
+    number = list.${list.len - 1}.0;
+    
 }

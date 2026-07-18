@@ -135,8 +135,14 @@ fn format_op(program: &Program, pos: CodePos, op: OpCode) -> String {
 		OpCode::GetAttr => "GetAttr".into(),
 		OpCode::GetAttrOr(expr) => format!("GetAttrOr @{}", fmt_pos(expr)),
 		OpCode::Branch(offset) => format_jump("Branch", pos, offset),
-		OpCode::Pop => "Pop".into(),
+		OpCode::PopV => "PopV".into(),
+		OpCode::DupV => "DupV".into(),
+		OpCode::PopT => "PopT".into(),
+		OpCode::DupT => "DupT".into(),
 		OpCode::Ret => "Ret".into(),
+		OpCode::EvalThunk => "EvalThunk".into(),
+		OpCode::BindThunkScope => "BindThunkScope".into(),
+		OpCode::BindValueScope => "BindValueScope".into(),
 	}
 }
 
