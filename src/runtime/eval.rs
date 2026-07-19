@@ -2,12 +2,8 @@ use super::trace::*;
 use std::{borrow::Cow, collections::HashSet};
 
 use crate::{
-	bytecode::{CodeLocOffset, CodePos, OpCode},
-	runtime::{
-		LazyValue, Runtime, Value,
-		scope::Scope,
-		thunk::{Thunk, ThunkEvalErr},
-		value::{AttrSet, Lambda, List, ValueType},
+	bytecode::{CodeLocOffset, CodePos, OpCode}, runtime::{
+		LazyValue, Runtime, Value, scope::Scope, thunk::{Thunk, ThunkEvalErr}, value::{AttrSet, Lambda, List, StringKind, ValueType},
 	},
 };
 
@@ -62,6 +58,25 @@ pub struct Evaluator<'a, 'b> {
 	pub deeply_evaluated: HashSet<usize>,
 }
 
+	// fn checked_int_result(
+	// 	&self,
+	// 	op_name: &'static str,
+	// 	display: String,
+	// 	value: Option<i64>,
+	// ) -> Result<Value, EvalError<'a>> {
+	// 	value.map(Value::Int).ok_or_else(|| {
+	// 		EvalError::Arithmetic(format!("{op_name} overflowed for {display}").into())
+	// 	})
+	// }
+
+macro_rules! checked_int_result {
+	($op_name:expr, $display:expr, $value:expr $(,)?) => {
+		$value.map(Value::Int).ok_or_else(|| {
+			EvalError::Arithmetic(format!("{} overflowed for {}", $op_name, $display).into())
+		})
+	};
+}
+
 macro_rules! checked_numeric_op {
 	(
 		$lhs:expr,
@@ -103,7 +118,7 @@ macro_rules! checked_numeric_method {
 				rhs,
 				type_error($bad_lhs, $bad_rhs) = $type_error,
 				int(lhs, rhs) = {
-					self.checked_int_result(
+					checked_int_result!(
 						$op_name,
 						format!("{lhs} {} {rhs}", $symbol),
 						lhs.$int_method(rhs),
@@ -137,7 +152,7 @@ macro_rules! checked_zero_numeric_method {
 						return Err(EvalError::Arithmetic(format!($zero_message, lhs).into()));
 					}
 
-					self.checked_int_result(
+					checked_int_result!(
 						$op_name,
 						format!("{lhs} {} {rhs}", $symbol),
 						lhs.$int_method(rhs),
@@ -177,21 +192,10 @@ impl<'a, 'b> Evaluator<'a, 'b> {
 		}
 	}
 
-	fn checked_int_result(
-		&self,
-		op_name: &'static str,
-		display: String,
-		value: Option<i64>,
-	) -> Result<Value, EvalError<'a>> {
-		value.map(Value::Int).ok_or_else(|| {
-			EvalError::Arithmetic(format!("{op_name} overflowed for {display}").into())
-		})
-	}
-
 	fn checked_add(&self, lhs: Value, rhs: Value) -> Result<Value, EvalError<'a>> {
 		match (lhs, rhs) {
 			(Value::String(mut lhs), Value::String(rhs)) => {
-				lhs.push_str(&rhs);
+				// lhs.push_str(&rhs);
 				Ok(Value::String(lhs))
 			}
 			(lhs, rhs) => checked_numeric_op!(
@@ -203,7 +207,7 @@ impl<'a, 'b> Evaluator<'a, 'b> {
 					}
 				},
 				int(lhs, rhs) = {
-					self.checked_int_result(
+					checked_int_result!(
 						"addition",
 						format!("{lhs} + {rhs}"),
 						lhs.checked_add(rhs),
@@ -333,7 +337,7 @@ impl<'a, 'b> Evaluator<'a, 'b> {
 		}
 	}
 
-	fn pop_string(&mut self) -> Result<String, EvalError<'a>> {
+	fn pop_string(&mut self) -> Result<StringKind, EvalError<'a>> {
 		let value = self.pop_value()?;
 		match value {
 			Value::String(value) => Ok(value),
@@ -421,7 +425,7 @@ impl<'a, 'b> Evaluator<'a, 'b> {
 			Value::String(name) => match indexing {
 				Value::AttrSet(attrset) => Ok(attrset.get(name).cloned()),
 				Value::List(list) => {
-					if name != "len" {
+					if &**name != "len" {
 						Ok(None)
 					} else {
 						Ok(Some(Value::Int(list.len() as i64).into()))
@@ -550,7 +554,7 @@ impl<'a, 'b> Evaluator<'a, 'b> {
 				let thunk = Thunk::uneval_with_scope(arg_pos, self.curr_frame.scope.clone()).into();
 				self.thunk_stack.push(thunk);
 
-				Frame::new(lambda.code, scope, FrameKind::Function)
+				Frame::new(lambda.code, scope.new_level(), FrameKind::Function)
 			}
 		};
 		self.begin_frame(frame)?;
@@ -698,9 +702,8 @@ impl<'a, 'b> Evaluator<'a, 'b> {
 					let attrset = self.pop_attrset()?;
 					let scope = if op == OpCode::FinalizeAttrSetRec {
 						let mut scope = self.curr_frame.scope.clone();
-						let scope_mut = scope.get_mut();
 						for (name, value) in attrset.iter() {
-							scope_mut.insert(name.into(), value.clone());
+							scope.bind(name.clone(), value.clone());
 						}
 						scope
 					} else {
@@ -732,7 +735,7 @@ impl<'a, 'b> Evaluator<'a, 'b> {
 					self.push_value(Value::Lambda(lambda))?;
 				}
 				OpCode::LoadStr(str) => {
-					self.push_value(Value::String(self.runtime.program.get_str(str).into()))?
+					self.push_value(Value::String(self.runtime.program.get_str(str)))?
 				}
 				OpCode::LoadInt(int) => self.push_value(Value::Int(int))?,
 				OpCode::LoadFloat(float) => self.push_value(Value::Float(float))?,
@@ -749,7 +752,7 @@ impl<'a, 'b> Evaluator<'a, 'b> {
 					let lazy = self.get_attr(&indexing, &index)?;
 
 					if let Some(lazy) = lazy {
-						self.push_thunk(lazy);
+						self.push_thunk(lazy)?;
 					} else {
 						let idx = match index {
 							Value::Bool(bool) => format!("{bool}"),
@@ -787,12 +790,12 @@ impl<'a, 'b> Evaluator<'a, 'b> {
 				OpCode::BindThunkScope => {
 					let attr = self.pop_string()?;
 					let thunk = self.pop_thunk()?;
-					self.curr_frame.scope.get_mut().insert(attr, thunk);
+					self.curr_frame.scope.bind(attr, thunk);
 				}
 				OpCode::BindValueScope => {
 					let attr = self.pop_string()?;
 					let value = self.pop_value()?;
-					self.curr_frame.scope.get_mut().insert(attr, value.into());
+					self.curr_frame.scope.bind(attr, value.into());
 				}
 
 				OpCode::LoadScope => {

@@ -1,8 +1,10 @@
+pub use super::string::*;
+
 use std::{
-	collections::{HashMap, VecDeque},
-	ops::Deref,
-	path::PathBuf,
+	collections::VecDeque, ops::{Deref, DerefMut}, path::PathBuf,
 };
+
+use crate::HashMap;
 
 use dumpster::{Trace, unsync::Gc};
 
@@ -46,7 +48,7 @@ pub enum Value {
 	Bool(bool),
 	Int(i64),
 	Float(f64),
-	String(String),
+	String(StringKind),
 	Path(PathBuf),
 	List(List),
 	AttrSet(AttrSet),
@@ -88,7 +90,7 @@ impl From<bool> for Value {
 
 impl From<String> for Value {
 	fn from(value: String) -> Self {
-		Self::String(value)
+		Self::String(StringKind::String(value))
 	}
 }
 
@@ -146,9 +148,44 @@ impl Deref for List {
 	}
 }
 
-#[derive(Clone, Default, Trace)]
+#[derive(Clone, Debug, Default, Trace)]
 pub struct AttrSet {
-	inner: Gc<HashMap<String, LazyValue>>,
+	inner: Gc<AttrSetInner>,
+}
+
+#[derive(Clone, Default)]
+pub struct AttrSetInner(HashMap<StringKind, LazyValue>);
+
+impl Deref for AttrSetInner {
+	type Target = HashMap<StringKind, LazyValue>;
+
+	fn deref(&self) -> &Self::Target {
+		&self.0
+	}
+}
+
+impl DerefMut for AttrSetInner {
+	fn deref_mut(&mut self) -> &mut Self::Target {
+		&mut self.0
+	}
+}
+
+impl std::fmt::Debug for AttrSetInner {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.debug_tuple("AttrSet").field(&self.0).finish()
+	}
+}
+
+unsafe impl<Z: dumpster::Visitor>
+    dumpster::TraceWith<Z> for AttrSetInner
+{
+    fn accept(&self, visitor: &mut Z) -> Result<(), ()> {
+        for (k, v) in &self.0 {
+            k.accept(visitor)?;
+            v.accept(visitor)?;
+        }
+		Ok(())
+    }
 }
 
 impl AttrSet {
@@ -156,31 +193,27 @@ impl AttrSet {
 		Gc::as_ptr(&self.inner) as *const () as usize
 	}
 
-	pub fn get_mut(&mut self) -> &mut HashMap<String, LazyValue> {
-		Gc::make_mut(&mut self.inner)
+	pub fn get_mut(&mut self) -> &mut HashMap<StringKind, LazyValue> {
+		&mut Gc::make_mut(&mut self.inner).0
 	}
 
 	pub fn new() -> Self {
 		Self::default()
 	}
 
-	pub fn from(map: HashMap<String, LazyValue>) -> Self {
+	pub fn from(map: HashMap<StringKind, LazyValue>) -> Self {
 		Self {
-			inner: Gc::new(map),
+			inner: Gc::new(AttrSetInner(map)),
 		}
 	}
 }
 
-impl std::fmt::Debug for AttrSet {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		f.debug_tuple("AttrSet").field(&*self.inner).finish()
-	}
-}
-
 impl Deref for AttrSet {
-	type Target = HashMap<String, LazyValue>;
+	type Target = HashMap<StringKind, LazyValue>;
 
 	fn deref(&self) -> &Self::Target {
-		&self.inner
+		&*self.inner
 	}
 }
+
+

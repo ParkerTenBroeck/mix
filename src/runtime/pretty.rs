@@ -1,5 +1,6 @@
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap};
 use std::fmt;
+use crate::{HashMap, HashSet};
 
 use crate::runtime::lazy::LazyValue;
 use crate::{
@@ -41,21 +42,21 @@ impl<'rt, 'a> PrettyPrinter<'rt, 'a> {
 	fn new(runtime: &'rt Runtime<'a>) -> Self {
 		Self {
 			runtime,
-			counts: HashMap::new(),
-			expanded: HashSet::new(),
-			labels: HashMap::new(),
+			counts: HashMap::default(),
+			expanded: HashSet::default(),
+			labels: HashMap::default(),
 			next_label: 1,
 		}
 	}
 
 	fn render_root_value(&mut self, value: &Value) -> String {
-		let mut seen = HashSet::new();
+		let mut seen = HashSet::default();
 		self.count_value(value, &mut seen);
 		self.render_value_inner(value, 0)
 	}
 
 	fn render_root_lazy(&mut self, value: &LazyValue) -> String {
-		let mut seen = HashSet::new();
+		let mut seen = HashSet::default();
 		self.count_lazy(value, &mut seen);
 		self.render_lazy_inner(value, 0)
 	}
@@ -171,7 +172,7 @@ impl<'rt, 'a> PrettyPrinter<'rt, 'a> {
 
 		let mut attrs = BTreeMap::new();
 		for (name, value) in attrset.iter() {
-			attrs.insert(name, value);
+			attrs.insert(&**name, value);
 		}
 
 		let mut out = String::new();

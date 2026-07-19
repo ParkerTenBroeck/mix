@@ -5,6 +5,7 @@ pub mod scope;
 pub mod thunk;
 pub mod trace;
 pub mod value;
+pub mod string;
 
 use crate::{
 	bytecode::Program,

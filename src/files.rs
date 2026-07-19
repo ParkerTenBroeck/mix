@@ -1,11 +1,12 @@
 use std::{
 	borrow::Cow,
 	cell::RefCell,
-	collections::HashMap,
 	path::{Path, PathBuf},
 };
 
 use std::range::Range;
+
+use crate::HashMap;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Span {

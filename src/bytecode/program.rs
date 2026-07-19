@@ -1,4 +1,4 @@
-use std::num::NonZeroUsize;
+use std::{num::NonZeroUsize, rc::Rc};
 
 use dumpster::Trace;
 
@@ -81,7 +81,7 @@ pub struct Program {
 	code: Vec<OpCode>,
 	lambdas: Vec<Lambda>,
 	expressions: Vec<Expr>,
-	strings: Vec<String>,
+	strings: Vec<Rc<String>>,
 }
 
 impl Program {
@@ -94,8 +94,8 @@ impl Program {
 		Some((*self.code.get(loc.0)?, CodePos(loc.0 + 1)))
 	}
 
-	pub fn get_str(&self, str: StrId) -> &str {
-		self.strings.get(str.0.get() - 1).unwrap()
+	pub fn get_str(&self, str: StrId) -> crate::runtime::value::StringKind {
+		crate::runtime::value::StringKind::Interned(self.strings.get(str.0.get() - 1).unwrap().clone())
 	}
 
 	pub fn get_lambda(&self, lambda: LambdaId) -> Option<&Lambda> {
@@ -126,7 +126,7 @@ impl Program {
 
 impl ProgramBuilder for Program {
 	fn emit_str(&mut self, str: &str) -> StrId {
-		self.strings.push(str.into());
+		self.strings.push(Rc::new(str.into()));
 		StrId(NonZeroUsize::new(self.strings.len()).unwrap())
 	}
 

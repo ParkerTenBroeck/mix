@@ -6,3 +6,10 @@ edition = "2024"
 [dependencies]
 annotate-snippets = "*"
 dumpster = "*"
+rustc-hash = "*"
+
+[profile.release]
+debug = true
+
+[target.x86_64-unknown-linux-gnu]
+rustflags = ["-Clink-arg=-Wl,--no-rosegment"]

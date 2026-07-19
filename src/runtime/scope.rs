@@ -1,39 +1,47 @@
-use std::ops::{Deref, DerefMut};
+use dumpster::{Trace, unsync::Gc};
 
-use dumpster::Trace;
-
-use crate::runtime::{LazyValue, value::AttrSet};
+use crate::{runtime::{LazyValue, value::{AttrSetInner, StringKind}}};
 
 #[derive(Clone, Default, Debug, Trace)]
-pub struct Scope(AttrSet);
+pub struct Scope(Gc<ScopeInner>);
+
+#[derive(Clone, Default, Debug, Trace)]
+struct ScopeInner{
+	curr: AttrSetInner,
+	prev: Option<Scope>
+}
 
 impl Scope {
-	pub fn new(scope: AttrSet) -> Self {
-		Self(scope)
+	pub fn new(curr: AttrSetInner) -> Self {
+		Self(Gc::new(ScopeInner { curr, prev: None }))
+	}
+
+	pub fn new_with(curr: AttrSetInner, prev: Scope) -> Self {
+		Self(Gc::new(ScopeInner { curr, prev: Some(prev) }))
 	}
 
 	pub fn resolve(&self, name: &str) -> Option<&LazyValue> {
-		self.0.get(name)
+		if let Some(resolved) = self.0.curr.get(name){
+			return Some(resolved)
+		}
+		if let Some(prev) = &self.0.prev{
+			return prev.resolve(name)
+		}
+		None
 	}
-}
 
-impl Deref for Scope {
-	type Target = AttrSet;
-
-	fn deref(&self) -> &Self::Target {
-		&self.0
+	pub fn new_level(&self) -> Scope {
+		Self::new_with(AttrSetInner::default(), self.clone())
 	}
-}
-
-impl DerefMut for Scope {
-	fn deref_mut(&mut self) -> &mut Self::Target {
-		&mut self.0
+	
+	pub fn bind(&mut self, ident: StringKind, value: LazyValue) -> Option<LazyValue> {
+		Gc::make_mut(&mut self.0).curr.insert(ident, value)
 	}
 }
 
 #[derive(Debug, Default)]
 pub struct ScopeBuilder {
-	scope: AttrSet,
+	scope: AttrSetInner,
 }
 
 impl ScopeBuilder {
@@ -41,8 +49,8 @@ impl ScopeBuilder {
 		Default::default()
 	}
 
-	pub fn with(mut self, key: impl Into<String>, value: impl Into<LazyValue>) -> Self {
-		self.scope.get_mut().insert(key.into(), value.into());
+	pub fn with(mut self, key: impl Into<StringKind>, value: impl Into<LazyValue>) -> Self {
+		self.scope.insert(key.into(), value.into());
 		self
 	}
 

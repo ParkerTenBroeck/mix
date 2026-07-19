@@ -11,8 +11,8 @@ fn run() {
 	});
 
 	let scope = ScopeBuilder::new()
-		.with("false", false)
-		.with("true", true)
+		// .with("false", false)
+		// .with("true", true)
 		.bottom();
 
 	let mut runtime = Runtime::new(&files, scope);
@@ -25,8 +25,8 @@ fn run() {
 			return;
 		}
 	};
-	println!("{}", PrettyProgram::new(&runtime.program, &files));
-	println!("{}", runtime.pretty_lazy(&res));
+	// println!("{}", PrettyProgram::new(&runtime.program, &files));
+	// println!("{}", runtime.pretty_lazy(&res));
 	let res = runtime.deep_eval(res);
 	match res {
 		Ok(ok) => println!("{}", runtime.pretty_value(&ok)),
