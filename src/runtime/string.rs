@@ -8,7 +8,7 @@ pub enum StringKind{
 
 unsafe impl<__V: ::dumpster::Visitor> ::dumpster::TraceWith<__V> for StringKind {
 	#[inline]
-	fn accept(&self, visitor: &mut __V) -> ::core::result::Result<(), ()> {
+	fn accept(&self, _: &mut __V) -> ::core::result::Result<(), ()> {
 		Ok(())
 	}
 }
@@ -51,5 +51,19 @@ impl PartialOrd for StringKind{
 impl Ord for StringKind{
 	fn cmp(&self, other: &Self) -> std::cmp::Ordering {
 		(&**self).cmp(&**other)
+	}
+}
+
+impl StringKind{
+	pub fn get_mut(&mut self) -> &mut String{
+		match self{
+			StringKind::Interned(str) => *self = StringKind::String(str.as_str().to_owned()),
+			_ => {}
+		}
+
+		match self{
+			StringKind::String(str) => str,
+			StringKind::Interned(_) => unreachable!(),
+		}
 	}
 }

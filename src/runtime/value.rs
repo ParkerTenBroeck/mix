@@ -1,10 +1,10 @@
 pub use super::string::*;
 
 use std::{
-	collections::VecDeque, ops::{Deref, DerefMut}, path::PathBuf,
+	collections::VecDeque, fmt::Debug, ops::{Deref, DerefMut}, path::PathBuf,
 };
 
-use crate::HashMap;
+use crate::{HashMap, runtime::{eval::{EvalError, Evaluator}}};
 
 use dumpster::{Trace, unsync::Gc};
 
@@ -96,19 +96,32 @@ impl From<String> for Value {
 
 #[derive(Clone, Trace)]
 pub struct NativeLambda {
-	inner: Gc<NativeLambdaInner>,
+	inner: Gc<Box<dyn NativeLambdaTrait>>, // silly rust
 }
 
-#[derive(Trace)]
-pub struct NativeLambdaInner {
-	pub identifer: Gc<String>,
-	// pub func: dyn Fn(&mut super::Runtime<'static>, Value) -> Value,
+impl Deref for NativeLambda{
+	type Target = dyn NativeLambdaTrait;
+
+	fn deref(&self) -> &Self::Target {
+		&**self.inner
+	}
+}
+
+impl NativeLambda {
+	pub fn new<T: NativeLambdaTrait>(lambda: T) -> Self{
+		Self { inner: Gc::new(Box::new(lambda)) }
+	}
+}
+
+pub trait NativeLambdaTrait: Trace + Debug + 'static {
+	fn identifier(&self) -> &str;
+	fn call<'a, 'b>(&self, rt: &mut Evaluator<'a, 'b>) -> Result<Value, EvalError>;
 }
 
 impl std::fmt::Debug for NativeLambda {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		f.debug_struct("NativeLambda")
-			.field("identifer", &self.inner.identifer)
+			.field("identifer", &self.inner.identifier())
 			.finish()
 	}
 }
@@ -116,7 +129,7 @@ impl std::fmt::Debug for NativeLambda {
 #[derive(Clone, Debug, Trace)]
 pub enum Lambda {
 	Lambda { scope: Scope, lambda: LambdaId },
-	// NativeLambda(NativeLambda),
+	NativeLambda(NativeLambda),
 }
 
 #[derive(Clone, Default, Debug, Trace)]

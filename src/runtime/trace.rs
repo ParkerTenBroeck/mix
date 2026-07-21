@@ -6,13 +6,13 @@ use crate::{
 	},
 };
 
-pub struct ErrorTrace<'a> {
-	pub kind: EvalError<'a>,
+pub struct ErrorTrace {
+	pub kind: EvalError,
 	pub stack: Vec<FrameInfo>,
 }
 
-impl<'a> ErrorTrace<'a> {
-	pub fn render(&self, runtime: &Runtime<'a>) -> String {
+impl ErrorTrace {
+	pub fn render(&self, runtime: &Runtime<'_>) -> String {
 		use annotate_snippets::{Group, Level, Renderer};
 
 		let renderer =
@@ -66,7 +66,7 @@ impl<'a> ErrorTrace<'a> {
 		renderer.render(&groups)
 	}
 
-	pub fn build(eval: &super::eval::Evaluator<'a, '_>, kind: EvalError<'a>) -> Self {
+	pub fn build(eval: &super::eval::Evaluator<'_, '_>, kind: EvalError) -> Self {
 		Self {
 			kind,
 			stack: Self::build_trace(eval),

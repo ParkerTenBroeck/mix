@@ -16,13 +16,13 @@ pub enum FrameKind {
 }
 
 #[derive(Debug)]
-pub enum EvalError<'a> {
+pub enum EvalError {
 	TypeMismatch { expected: ValueType, got: ValueType },
-	BinOpTypeMismatch { details: Cow<'a, str> },
-	Arithmetic(Cow<'a, str>),
-	MissingAttr(Cow<'a, str>),
-	MissingBinding(Cow<'a, str>),
-	Internal(Cow<'a, str>),
+	BinOpTypeMismatch { details: Cow<'static, str> },
+	Arithmetic(Cow<'static, str>),
+	MissingAttr(Cow<'static, str>),
+	MissingBinding(Cow<'static, str>),
+	Internal(Cow<'static, str>),
 	ThunkEval(ThunkEvalErr),
 	ByteCode(&'static str),
 }
@@ -57,17 +57,6 @@ pub struct Evaluator<'a, 'b> {
 
 	pub deeply_evaluated: HashSet<usize>,
 }
-
-	// fn checked_int_result(
-	// 	&self,
-	// 	op_name: &'static str,
-	// 	display: String,
-	// 	value: Option<i64>,
-	// ) -> Result<Value, EvalError<'a>> {
-	// 	value.map(Value::Int).ok_or_else(|| {
-	// 		EvalError::Arithmetic(format!("{op_name} overflowed for {display}").into())
-	// 	})
-	// }
 
 macro_rules! checked_int_result {
 	($op_name:expr, $display:expr, $value:expr $(,)?) => {
@@ -111,7 +100,7 @@ macro_rules! checked_numeric_method {
 		int = $int_method:ident,
 		float($float_lhs:ident, $float_rhs:ident) = $float_eval:block $(,)?
 	) => {
-		fn $name(&self, lhs: Value, rhs: Value) -> Result<Value, EvalError<'a>> {
+		fn $name(&self, lhs: Value, rhs: Value) -> Result<Value, EvalError> {
 			let $this = self;
 			checked_numeric_op!(
 				lhs,
@@ -141,7 +130,7 @@ macro_rules! checked_zero_numeric_method {
 		float($float_lhs:ident, $float_rhs:ident) = $float_eval:block,
 		zero = $zero_message:literal $(,)?
 	) => {
-		fn $name(&self, lhs: Value, rhs: Value) -> Result<Value, EvalError<'a>> {
+		fn $name(&self, lhs: Value, rhs: Value) -> Result<Value, EvalError> {
 			let $this = self;
 			checked_numeric_op!(
 				lhs,
@@ -179,7 +168,7 @@ impl<'a, 'b> Evaluator<'a, 'b> {
 		lhs: f64,
 		rhs: f64,
 		eval: impl FnOnce(f64, f64) -> f64,
-	) -> Result<Value, EvalError<'a>> {
+	) -> Result<Value, EvalError> {
 		let value = eval(lhs, rhs);
 
 		if value.is_finite() {
@@ -192,10 +181,10 @@ impl<'a, 'b> Evaluator<'a, 'b> {
 		}
 	}
 
-	fn checked_add(&self, lhs: Value, rhs: Value) -> Result<Value, EvalError<'a>> {
+	fn checked_add(&self, lhs: Value, rhs: Value) -> Result<Value, EvalError> {
 		match (lhs, rhs) {
 			(Value::String(mut lhs), Value::String(rhs)) => {
-				// lhs.push_str(&rhs);
+				lhs.get_mut().push_str(&rhs);
 				Ok(Value::String(lhs))
 			}
 			(lhs, rhs) => checked_numeric_op!(
@@ -284,7 +273,7 @@ impl<'a, 'b> Evaluator<'a, 'b> {
 		runtime: &'b Runtime<'a>,
 		lazy: LazyValue,
 		recursive: bool,
-	) -> Result<Value, ErrorTrace<'a>> {
+	) -> Result<Value, ErrorTrace> {
 		let (pos, scope, thunk) = match lazy.try_into_value() {
 			Ok(value) => return Ok(value),
 			Err(thunk) => match thunk.eval_begin() {
@@ -315,18 +304,18 @@ impl<'a, 'b> Evaluator<'a, 'b> {
 		res.map_err(|kind| ErrorTrace::build(&eval, kind))
 	}
 
-	fn push_value(&mut self, value: Value) -> Result<(), EvalError<'a>> {
+	fn push_value(&mut self, value: Value) -> Result<(), EvalError> {
 		self.value_stack.push(value);
 		Ok(())
 	}
 
-	fn pop_value(&mut self) -> Result<Value, EvalError<'a>> {
+	fn pop_value(&mut self) -> Result<Value, EvalError> {
 		self.value_stack
 			.pop()
 			.ok_or(EvalError::ByteCode("value stack"))
 	}
 
-	fn pop_bool(&mut self) -> Result<bool, EvalError<'a>> {
+	fn pop_bool(&mut self) -> Result<bool, EvalError> {
 		let value = self.pop_value()?;
 		match value {
 			Value::Bool(value) => Ok(value),
@@ -337,7 +326,7 @@ impl<'a, 'b> Evaluator<'a, 'b> {
 		}
 	}
 
-	fn pop_string(&mut self) -> Result<StringKind, EvalError<'a>> {
+	fn pop_string(&mut self) -> Result<StringKind, EvalError> {
 		let value = self.pop_value()?;
 		match value {
 			Value::String(value) => Ok(value),
@@ -348,7 +337,7 @@ impl<'a, 'b> Evaluator<'a, 'b> {
 		}
 	}
 
-	fn pop_list(&mut self) -> Result<List, EvalError<'a>> {
+	fn pop_list(&mut self) -> Result<List, EvalError> {
 		let value = self.pop_value()?;
 		match value {
 			Value::List(value) => Ok(value),
@@ -359,7 +348,7 @@ impl<'a, 'b> Evaluator<'a, 'b> {
 		}
 	}
 
-	fn pop_attrset(&mut self) -> Result<AttrSet, EvalError<'a>> {
+	fn pop_attrset(&mut self) -> Result<AttrSet, EvalError> {
 		let value = self.pop_value()?;
 		match value {
 			Value::AttrSet(value) => Ok(value),
@@ -370,7 +359,7 @@ impl<'a, 'b> Evaluator<'a, 'b> {
 		}
 	}
 
-	fn pop_lambda(&mut self) -> Result<Lambda, EvalError<'a>> {
+	fn pop_lambda(&mut self) -> Result<Lambda, EvalError> {
 		let value = self.pop_value()?;
 		match value {
 			Value::Lambda(value) => Ok(value),
@@ -381,30 +370,30 @@ impl<'a, 'b> Evaluator<'a, 'b> {
 		}
 	}
 
-	fn push_thunk(&mut self, value: LazyValue) -> Result<(), EvalError<'a>> {
+	fn push_thunk(&mut self, value: LazyValue) -> Result<(), EvalError> {
 		self.thunk_stack.push(value);
 		Ok(())
 	}
 
-	fn pop_thunk(&mut self) -> Result<LazyValue, EvalError<'a>> {
+	fn pop_thunk(&mut self) -> Result<LazyValue, EvalError> {
 		self.thunk_stack
 			.pop()
 			.ok_or(EvalError::ByteCode("thunk stack"))
 	}
 
-	fn begin_frame(&mut self, mut frame: Frame) -> Result<(), EvalError<'a>> {
+	fn begin_frame(&mut self, mut frame: Frame) -> Result<(), EvalError> {
 		std::mem::swap(&mut self.curr_frame, &mut frame);
 		self.frame_stack.push(PotentialFrame::Realized(frame));
 		Ok(())
 	}
 
-	fn pop_frame(&mut self) -> Result<PotentialFrame, EvalError<'a>> {
+	fn pop_frame(&mut self) -> Result<PotentialFrame, EvalError> {
 		self.frame_stack
 			.pop()
 			.ok_or(EvalError::ByteCode("call stack"))
 	}
 
-	fn next_op(&mut self) -> Result<OpCode, EvalError<'a>> {
+	fn next_op(&mut self) -> Result<OpCode, EvalError> {
 		let Some((op, pos)) = self.runtime.program.get(self.curr_frame.pos) else {
 			return Err(EvalError::ByteCode("instruction pointer overran bytecode"));
 		};
@@ -420,7 +409,7 @@ impl<'a, 'b> Evaluator<'a, 'b> {
 		&mut self,
 		indexing: &Value,
 		index: &Value,
-	) -> Result<Option<LazyValue>, EvalError<'a>> {
+	) -> Result<Option<LazyValue>, EvalError> {
 		match index {
 			Value::String(name) => match indexing {
 				Value::AttrSet(attrset) => Ok(attrset.get(name).cloned()),
@@ -452,7 +441,7 @@ impl<'a, 'b> Evaluator<'a, 'b> {
 		}
 	}
 
-	fn spill_deep_value(&mut self, value: &Value) -> Result<(), EvalError<'a>> {
+	fn spill_deep_value(&mut self, value: &Value) -> Result<(), EvalError> {
 		match &value {
 			Value::AttrSet(attrs) => {
 				if !self.deeply_evaluated.insert(attrs.id()) {
@@ -477,7 +466,7 @@ impl<'a, 'b> Evaluator<'a, 'b> {
 		Ok(())
 	}
 
-	fn ret(&mut self, prev: CodePos) -> Result<Option<Value>, EvalError<'a>> {
+	fn ret(&mut self, prev: CodePos) -> Result<Option<Value>, EvalError> {
 		let ret = self.pop_value()?;
 
 		// update the thunk if the current frame was evaluating a thunk
@@ -540,10 +529,10 @@ impl<'a, 'b> Evaluator<'a, 'b> {
 		Ok(None)
 	}
 
-	fn apply(&mut self, arg_pos: CodePos) -> Result<(), EvalError<'a>> {
+	fn apply(&mut self, arg_pos: CodePos) -> Result<(), EvalError> {
 		let lambda = self.pop_lambda()?;
 
-		let frame = match lambda {
+		match lambda {
 			Lambda::Lambda { scope, lambda } => {
 				let lambda = self.runtime.program.get_lambda(lambda).ok_or_else(|| {
 					EvalError::Internal(
@@ -554,14 +543,18 @@ impl<'a, 'b> Evaluator<'a, 'b> {
 				let thunk = Thunk::uneval_with_scope(arg_pos, self.curr_frame.scope.clone()).into();
 				self.thunk_stack.push(thunk);
 
-				Frame::new(lambda.code, scope.new_level(), FrameKind::Function)
+				let frame = Frame::new(lambda.code, scope.new_level(), FrameKind::Function);
+				self.begin_frame(frame)?
 			}
-		};
-		self.begin_frame(frame)?;
+			Lambda::NativeLambda(native_lambda) => {
+				let value = native_lambda.call(self)?;
+				self.push_value(value)?
+			},
+			};
 		Ok(())
 	}
 
-	fn run_loop(&mut self) -> Result<Value, EvalError<'a>> {
+	fn run_loop(&mut self) -> Result<Value, EvalError> {
 		use crate::bytecode::OpCode;
 
 		macro_rules! binop_cmp {

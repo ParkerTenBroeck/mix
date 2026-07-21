@@ -119,7 +119,7 @@ impl<'rt, 'a> PrettyPrinter<'rt, 'a> {
 			Value::Bool(value) => value.to_string(),
 			Value::Int(value) => value.to_string(),
 			Value::Float(value) => value.to_string(),
-			Value::String(value) => format!("{value:?}"),
+			Value::String(value) => format!("{:?}", &**value),
 			Value::Path(path) => path.display().to_string(),
 			Value::List(list) => self.render_list(list, indent),
 			Value::AttrSet(attrset) => self.render_attrset(attrset, indent),
@@ -152,6 +152,7 @@ impl<'rt, 'a> PrettyPrinter<'rt, 'a> {
 		for value in list.iter() {
 			out.push_str(&"  ".repeat(indent + 1));
 			out.push_str(&self.render_lazy_inner(value, indent + 1));
+			out.push(',');
 			out.push('\n');
 		}
 		out.push_str(&"  ".repeat(indent));
@@ -201,7 +202,8 @@ impl<'rt, 'a> PrettyPrinter<'rt, 'a> {
 					"<<lambda>>".into()
 				}
 			}
-		}
+			Lambda::NativeLambda(native_lambda) => todo!(),
+			}
 	}
 
 	fn render_thunk(&mut self, thunk: &Thunk, indent: usize) -> String {

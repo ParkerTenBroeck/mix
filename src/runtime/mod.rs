@@ -49,11 +49,11 @@ impl<'a> Runtime<'a> {
 		Ok(expr)
 	}
 
-	pub fn eval(&mut self, lazy: LazyValue) -> Result<Value, ErrorTrace<'a>> {
+	pub fn eval(&mut self, lazy: LazyValue) -> Result<Value, ErrorTrace> {
 		Evaluator::eval(self, lazy, false)
 	}
 
-	pub fn deep_eval(&mut self, lazy: LazyValue) -> Result<Value, ErrorTrace<'a>> {
+	pub fn deep_eval(&mut self, lazy: LazyValue) -> Result<Value, ErrorTrace> {
 		Evaluator::eval(self, lazy, true)
 	}
 

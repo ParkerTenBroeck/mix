@@ -25,8 +25,8 @@ fn run() {
 			return;
 		}
 	};
-	// println!("{}", PrettyProgram::new(&runtime.program, &files));
-	// println!("{}", runtime.pretty_lazy(&res));
+	println!("{}", PrettyProgram::new(&runtime.program, &files));
+	println!("{}", runtime.pretty_lazy(&res));
 	let res = runtime.deep_eval(res);
 	match res {
 		Ok(ok) => println!("{}", runtime.pretty_value(&ok)),
