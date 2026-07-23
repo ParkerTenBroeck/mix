@@ -4,7 +4,7 @@ pub mod parser;
 
 use std::borrow::Cow;
 
-use crate::files::{FileId, FileLoader, Files, Span};
+use crate::files::{FileId, Files, Span};
 
 #[derive(Clone, Debug, Default)]
 pub struct Reports {

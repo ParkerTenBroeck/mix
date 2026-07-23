@@ -1,5 +1,4 @@
 use crate::HashMap;
-use std::borrow::Cow;
 
 use crate::{
 	files::{Node, Span},

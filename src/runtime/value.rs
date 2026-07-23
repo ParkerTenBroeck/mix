@@ -9,7 +9,7 @@ use std::{
 
 use crate::{
 	HashMap,
-	runtime::eval::{EvalError, Evaluator},
+	runtime::eval::{EvalError},
 };
 
 use dumpster::{Trace, unsync::Gc};
