@@ -15,8 +15,8 @@ pub(crate) struct StaticAttrBuilder<'a> {
 	pub(crate) children: Vec<StaticAttrBuilder<'a>>,
 }
 
-impl<'a> MirLowerer<'a> {
-	pub(crate) fn static_attr_parts(
+impl MirLowerer {
+	pub(crate) fn static_attr_parts<'a>(
 		&self,
 		path: &Node<ast::AttrPath<'a>>,
 	) -> Option<Vec<Node<&'a str>>> {
@@ -33,7 +33,7 @@ impl<'a> MirLowerer<'a> {
 			.collect()
 	}
 
-	pub(crate) fn insert_static_attr(
+	pub(crate) fn insert_static_attr<'a>(
 		&mut self,
 		attrs: &mut Vec<StaticAttrBuilder<'a>>,
 		parts: &[Node<&'a str>],

@@ -44,7 +44,7 @@ pub enum OpCode {
 
 	HasAttr,
 	GetAttr,
-	GetAttrOr(ExprLoc),
+	GetAttrOr(CodeLocOffset),
 
 	EvalThunk,
 

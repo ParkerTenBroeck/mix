@@ -1,11 +1,9 @@
 use mix::{
-	bytecode::PrettyProgram,
-	files::Files,
-	runtime::{Runtime, scope::ScopeBuilder},
+	bytecode::PrettyProgram, files::FileLoader, runtime::{Runtime, pretty::{PrettyLazyValue, PrettyValue}, scope::ScopeBuilder},
 };
 
 fn run() {
-	let files = Files::new(|path| match std::fs::read_to_string(path) {
+	let loader = FileLoader::new(|path| match std::fs::read_to_string(path) {
 		Ok(ok) => Ok(ok.into()),
 		Err(err) => Err(format!("{}: {err}", path.display()).into()),
 	});
@@ -15,21 +13,22 @@ fn run() {
 		// .with("true", true)
 		.bottom();
 
-	let mut runtime = Runtime::new(&files, scope);
-	let res = match runtime.load("test2.mix") {
+	let mut runtime = Runtime::new(loader.clone(), scope);
+	let res = match runtime.load("test.mix") {
 		Ok(ok) => ok,
 		Err(reports) => {
-			for report in reports.render(&files) {
+			for report in reports.render(&loader.files()) {
 				println!("{report}")
 			}
 			return;
 		}
 	};
-	println!("{}", PrettyProgram::new(&runtime.program, &files));
-	println!("{}", runtime.pretty_lazy(&res));
+	println!("{}", PrettyProgram::new(&runtime.program, &loader));
+	
+	println!("{}", PrettyLazyValue::new(&runtime, &res));
 	let res = runtime.deep_eval(res);
 	match res {
-		Ok(ok) => println!("{}", runtime.pretty_value(&ok)),
+		Ok(ok) => println!("{}", PrettyValue::new(&runtime, &ok)),
 		Err(trace) => println!("{}", trace.render(&runtime)),
 	}
 }

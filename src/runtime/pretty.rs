@@ -1,6 +1,6 @@
-use std::collections::{BTreeMap};
-use std::fmt;
 use crate::{HashMap, HashSet};
+use std::collections::BTreeMap;
+use std::fmt;
 
 use crate::runtime::lazy::LazyValue;
 use crate::{
@@ -13,18 +13,18 @@ use crate::{
 	},
 };
 
-pub fn render_value(runtime: &Runtime<'_>, value: &Value) -> String {
+pub fn render_value(runtime: &Runtime, value: &Value) -> String {
 	let mut printer = PrettyPrinter::new(runtime);
 	printer.render_root_value(value)
 }
 
-pub fn render_lazy_value(runtime: &Runtime<'_>, value: &LazyValue) -> String {
+pub fn render_lazy_value(runtime: &Runtime, value: &LazyValue) -> String {
 	let mut printer = PrettyPrinter::new(runtime);
 	printer.render_root_lazy(value)
 }
 
-struct PrettyPrinter<'rt, 'a> {
-	runtime: &'rt Runtime<'a>,
+struct PrettyPrinter<'rt> {
+	runtime: &'rt Runtime,
 	counts: HashMap<ObjectKey, usize>,
 	expanded: HashSet<ObjectKey>,
 	labels: HashMap<ObjectKey, usize>,
@@ -38,8 +38,8 @@ enum ObjectKey {
 	AttrSet(usize),
 }
 
-impl<'rt, 'a> PrettyPrinter<'rt, 'a> {
-	fn new(runtime: &'rt Runtime<'a>) -> Self {
+impl<'rt> PrettyPrinter<'rt> {
+	fn new(runtime: &'rt Runtime) -> Self {
 		Self {
 			runtime,
 			counts: HashMap::default(),
@@ -203,7 +203,7 @@ impl<'rt, 'a> PrettyPrinter<'rt, 'a> {
 				}
 			}
 			Lambda::NativeLambda(native_lambda) => todo!(),
-			}
+		}
 	}
 
 	fn render_thunk(&mut self, thunk: &Thunk, indent: usize) -> String {
@@ -260,8 +260,8 @@ impl<'rt, 'a> PrettyPrinter<'rt, 'a> {
 
 	pub fn format_span(&self, span: Span) -> String {
 		let (path, source) = self.runtime.loader.file(span.fid);
-		let (start_line, start_col) = line_col(source, span.range.start);
-		let (end_line, end_col) = line_col(source, span.range.end);
+		let (start_line, start_col) = line_col(&*source, span.range.start);
+		let (end_line, end_col) = line_col(&*source, span.range.end);
 		if start_line == end_line {
 			format!(
 				"{}:{}:{}-{}",
@@ -317,35 +317,35 @@ fn line_col(source: &str, offset: usize) -> (usize, usize) {
 	(line, col)
 }
 
-pub struct PrettyValue<'rt, 'a> {
-	runtime: &'rt Runtime<'a>,
+pub struct PrettyValue<'rt> {
+	runtime: &'rt Runtime,
 	value: &'rt Value,
 }
 
-impl<'rt, 'a> PrettyValue<'rt, 'a> {
-	pub fn new(runtime: &'rt Runtime<'a>, value: &'rt Value) -> Self {
+impl<'rt> PrettyValue<'rt> {
+	pub fn new(runtime: &'rt Runtime, value: &'rt Value) -> Self {
 		Self { runtime, value }
 	}
 }
 
-impl fmt::Display for PrettyValue<'_, '_> {
+impl fmt::Display for PrettyValue<'_> {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		f.write_str(&render_value(self.runtime, self.value))
 	}
 }
 
-pub struct PrettyLazyValue<'rt, 'a> {
-	runtime: &'rt Runtime<'a>,
+pub struct PrettyLazyValue<'rt> {
+	runtime: &'rt Runtime,
 	value: &'rt LazyValue,
 }
 
-impl<'rt, 'a> PrettyLazyValue<'rt, 'a> {
-	pub fn new(runtime: &'rt Runtime<'a>, value: &'rt LazyValue) -> Self {
+impl<'rt> PrettyLazyValue<'rt> {
+	pub fn new(runtime: &'rt Runtime, value: &'rt LazyValue) -> Self {
 		Self { runtime, value }
 	}
 }
 
-impl fmt::Display for PrettyLazyValue<'_, '_> {
+impl fmt::Display for PrettyLazyValue<'_> {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		f.write_str(&render_lazy_value(self.runtime, self.value))
 	}

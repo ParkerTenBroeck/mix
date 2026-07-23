@@ -6,14 +6,14 @@ use crate::{
 };
 
 #[derive(Clone, Debug)]
-pub struct DuplicateAttrError<'a> {
+pub struct DuplicateAttrError {
 	pub span: Span,
 	pub first: Span,
-	pub name: Cow<'a, str>,
+	pub name: Cow<'static, str>,
 }
 
-impl<'a> From<DuplicateAttrError<'a>> for Report<'a> {
-	fn from(err: DuplicateAttrError<'a>) -> Self {
+impl From<DuplicateAttrError> for Report {
+	fn from(err: DuplicateAttrError) -> Self {
 		Self {
 			level: ReportLevel::Error,
 			span: err.span,
@@ -28,14 +28,14 @@ impl<'a> From<DuplicateAttrError<'a>> for Report<'a> {
 }
 
 #[derive(Clone, Debug)]
-pub struct DuplicatePatternBindingError<'a> {
+pub struct DuplicatePatternBindingError {
 	pub span: Span,
 	pub first: Span,
-	pub name: Cow<'a, str>,
+	pub name: Cow<'static, str>,
 }
 
-impl<'a> From<DuplicatePatternBindingError<'a>> for Report<'a> {
-	fn from(err: DuplicatePatternBindingError<'a>) -> Self {
+impl From<DuplicatePatternBindingError> for Report {
+	fn from(err: DuplicatePatternBindingError) -> Self {
 		Self {
 			level: ReportLevel::Error,
 			span: err.span,

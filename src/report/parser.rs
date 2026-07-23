@@ -15,7 +15,7 @@ pub struct UnclosedDelimError {
 	pub opening: Node<Delim>,
 	pub closing: Node<Delim>,
 }
-impl From<UnclosedDelimError> for Report<'_> {
+impl From<UnclosedDelimError> for Report {
 	fn from(err: UnclosedDelimError) -> Self {
 		Self {
 			level: ReportLevel::Error,
@@ -39,7 +39,7 @@ pub struct MismatchedDelimError {
 	pub opening: Node<Delim>,
 	pub closing: Node<Delim>,
 }
-impl From<MismatchedDelimError> for Report<'_> {
+impl From<MismatchedDelimError> for Report {
 	fn from(err: MismatchedDelimError) -> Self {
 		Self {
 			level: ReportLevel::Error,
@@ -63,7 +63,7 @@ pub struct ExpectedClosingDelimError<'a> {
 	pub delim: Delim,
 	pub token: Token<'a>,
 }
-impl<'a> From<ExpectedClosingDelimError<'a>> for Report<'a> {
+impl<'a> From<ExpectedClosingDelimError<'a>> for Report {
 	fn from(err: ExpectedClosingDelimError<'a>) -> Self {
 		Self {
 			level: ReportLevel::Error,
@@ -85,7 +85,7 @@ pub struct UnexpectedTokenExprError<'a> {
 	pub token: Token<'a>,
 	pub expected: Option<Token<'a>>,
 }
-impl<'a> From<UnexpectedTokenExprError<'a>> for Report<'a> {
+impl<'a> From<UnexpectedTokenExprError<'a>> for Report {
 	fn from(err: UnexpectedTokenExprError<'a>) -> Self {
 		if let Some(expected) = err.expected {
 			Self {
@@ -121,7 +121,7 @@ pub struct UnexpectedTokenAttrPathError<'a> {
 	pub span: Span,
 	pub token: Token<'a>,
 }
-impl<'a> From<UnexpectedTokenAttrPathError<'a>> for Report<'a> {
+impl<'a> From<UnexpectedTokenAttrPathError<'a>> for Report {
 	fn from(err: UnexpectedTokenAttrPathError<'a>) -> Self {
 		Self {
 			level: ReportLevel::Error,
@@ -141,7 +141,7 @@ pub struct FuncAppInListError {
 	pub span: Span,
 	pub func: Span,
 }
-impl From<FuncAppInListError> for Report<'_> {
+impl From<FuncAppInListError> for Report {
 	fn from(err: FuncAppInListError) -> Self {
 		Self {
 			level: ReportLevel::Error,
@@ -162,7 +162,7 @@ impl From<FuncAppInListError> for Report<'_> {
 pub struct FuncDefInListError {
 	pub span: Span,
 }
-impl From<FuncDefInListError> for Report<'_> {
+impl From<FuncDefInListError> for Report {
 	fn from(err: FuncDefInListError) -> Self {
 		Self {
 			level: ReportLevel::Error,
@@ -183,7 +183,7 @@ pub struct ExpectedEofError<'a> {
 	pub span: Span,
 	pub token: Token<'a>,
 }
-impl<'a> From<ExpectedEofError<'a>> for Report<'a> {
+impl<'a> From<ExpectedEofError<'a>> for Report {
 	fn from(err: ExpectedEofError<'a>) -> Self {
 		Self {
 			level: ReportLevel::Error,
@@ -200,7 +200,7 @@ pub struct FloatError {
 	pub span: Span,
 	pub err: std::num::ParseFloatError,
 }
-impl From<FloatError> for Report<'_> {
+impl From<FloatError> for Report {
 	fn from(err: FloatError) -> Self {
 		Self {
 			level: ReportLevel::Error,
@@ -217,7 +217,7 @@ pub struct IntError {
 	pub span: Span,
 	pub err: std::num::ParseIntError,
 }
-impl From<IntError> for Report<'_> {
+impl From<IntError> for Report {
 	fn from(err: IntError) -> Self {
 		Self {
 			level: ReportLevel::Error,
@@ -234,7 +234,7 @@ pub struct UnexpectedTokenPattern<'a> {
 	pub span: Span,
 	pub got: Token<'a>,
 }
-impl<'a> From<UnexpectedTokenPattern<'a>> for Report<'_> {
+impl<'a> From<UnexpectedTokenPattern<'a>> for Report {
 	fn from(err: UnexpectedTokenPattern) -> Self {
 		Self {
 			level: ReportLevel::Error,
@@ -251,7 +251,7 @@ pub struct ExpectedIdent<'a> {
 	pub span: Span,
 	pub got: Token<'a>,
 }
-impl<'a> From<ExpectedIdent<'a>> for Report<'_> {
+impl<'a> From<ExpectedIdent<'a>> for Report {
 	fn from(err: ExpectedIdent) -> Self {
 		Self {
 			level: ReportLevel::Error,
@@ -268,7 +268,7 @@ pub struct DuplicatePatternRest {
 	pub span: Span,
 	pub first: Span,
 }
-impl From<DuplicatePatternRest> for Report<'_> {
+impl From<DuplicatePatternRest> for Report {
 	fn from(err: DuplicatePatternRest) -> Self {
 		Self {
 			level: ReportLevel::Error,
@@ -287,7 +287,7 @@ impl From<DuplicatePatternRest> for Report<'_> {
 pub struct NonTrailingPatternRestWarning {
 	pub span: Span,
 }
-impl From<NonTrailingPatternRestWarning> for Report<'_> {
+impl From<NonTrailingPatternRestWarning> for Report {
 	fn from(err: NonTrailingPatternRestWarning) -> Self {
 		Self {
 			level: ReportLevel::Error,
@@ -303,7 +303,7 @@ impl From<NonTrailingPatternRestWarning> for Report<'_> {
 pub struct NonTrailingListTrail {
 	pub span: Span,
 }
-impl From<NonTrailingListTrail> for Report<'_> {
+impl From<NonTrailingListTrail> for Report {
 	fn from(err: NonTrailingListTrail) -> Self {
 		Self {
 			level: ReportLevel::Error,

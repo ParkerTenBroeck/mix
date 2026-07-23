@@ -1,5 +1,5 @@
-use std::{borrow::Cow};
 use crate::HashMap;
+use std::borrow::Cow;
 
 use crate::{
 	files::{Node, Span},
@@ -7,20 +7,20 @@ use crate::{
 	report::mir::DuplicatePatternBindingError,
 };
 
-impl<'a> MirLowerer<'a> {
-	pub(crate) fn verify_lambda_pattern_bindings(&mut self, pattern: &Node<mir::Pattern<'a>>) {
+impl MirLowerer {
+	pub(crate) fn verify_lambda_pattern_bindings<'a>(&mut self, pattern: &Node<mir::Pattern<'a>>) {
 		let mut seen = HashMap::default();
 		self.verify_pattern_bindings(pattern, &mut seen);
 	}
 
-	pub(crate) fn verify_let_pattern_bindings(&mut self, bindings: &[mir::LetBinding<'a>]) {
+	pub(crate) fn verify_let_pattern_bindings<'a>(&mut self, bindings: &[mir::LetBinding<'a>]) {
 		let mut seen = HashMap::default();
 		for binding in bindings {
 			self.verify_pattern_bindings(&binding.id, &mut seen);
 		}
 	}
 
-	fn verify_pattern_bindings(
+	fn verify_pattern_bindings<'a>(
 		&mut self,
 		pattern: &Node<mir::Pattern<'a>>,
 		seen: &mut HashMap<&'a str, Span>,
@@ -35,7 +35,7 @@ impl<'a> MirLowerer<'a> {
 			self.reports.emit(DuplicatePatternBindingError {
 				span,
 				first,
-				name: Cow::Borrowed(name),
+				name: name.to_owned().into(),
 			});
 		}
 

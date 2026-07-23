@@ -1,6 +1,5 @@
 use crate::{
-	files::Span,
-	runtime::{
+	files::{Files, Span}, runtime::{
 		Runtime,
 		eval::{EvalError, Evaluator, FrameKind as EvalFrameKind, PotentialFrame},
 	},
@@ -12,8 +11,9 @@ pub struct ErrorTrace {
 }
 
 impl ErrorTrace {
-	pub fn render(&self, runtime: &Runtime<'_>) -> String {
+	pub fn render(&self, runtime: &Runtime) -> String {
 		use annotate_snippets::{Group, Level, Renderer};
+		let files = &runtime.loader.files();
 
 		let renderer =
 			Renderer::styled().decor_style(annotate_snippets::renderer::DecorStyle::Unicode);
@@ -41,7 +41,7 @@ impl ErrorTrace {
 		};
 
 		let mut groups = vec![render_frame(
-			runtime,
+			&files,
 			frame,
 			Level::ERROR.primary_title(title),
 			if matches!(frame.kind, FrameKind::Fn) {
@@ -60,38 +60,38 @@ impl ErrorTrace {
 				FrameKind::Fn => "function call",
 				FrameKind::LazyEval => "lazy value forced here",
 			};
-			render_frame(runtime, frame, Level::ERROR.secondary_title(title), label)
+			render_frame(&files, frame, Level::ERROR.secondary_title(title), label)
 		}));
 
 		renderer.render(&groups)
 	}
 
-	pub fn build(eval: &super::eval::Evaluator<'_, '_>, kind: EvalError) -> Self {
+	pub fn build(runtime: &Runtime, eval: &Evaluator, kind: EvalError) -> Self {
 		Self {
 			kind,
-			stack: Self::build_trace(eval),
+			stack: Self::build_trace(runtime, eval),
 		}
 	}
 
-	fn build_trace(eval: &Evaluator<'_, '_>) -> Vec<FrameInfo> {
+	fn build_trace(runtime: &Runtime, eval: &Evaluator) -> Vec<FrameInfo> {
 		let mut stack: Vec<FrameInfo> = eval
 			.frame_stack
 			.iter()
 			.filter_map(|frame| match frame {
 				PotentialFrame::Realized(frame) => Some(FrameInfo {
-					span: eval.runtime.program.find_pos(frame.pos),
+					span: runtime.program.find_pos(frame.pos),
 					kind: map_frame_kind(&frame.kind),
 				}),
 				PotentialFrame::PotentialDeep(_) => None,
 				PotentialFrame::DeepEval(code_pos) => Some(FrameInfo {
-					span: eval.runtime.program.find_pos(*code_pos),
+					span: runtime.program.find_pos(*code_pos),
 					kind: FrameKind::LazyEval,
 				}),
 			})
 			.collect();
 
 		stack.push(FrameInfo {
-			span: eval.runtime.program.find_pos(eval.curr_frame.pos),
+			span: runtime.program.find_pos(eval.curr_frame.pos),
 			kind: map_frame_kind(&eval.curr_frame.kind),
 		});
 
@@ -109,18 +109,18 @@ fn map_frame_kind(kind: &EvalFrameKind) -> FrameKind {
 }
 
 fn render_frame<'a>(
-	runtime: &Runtime<'a>,
+	files: &'a Files<'a>,
 	frame: &FrameInfo,
 	title: annotate_snippets::Title<'a>,
 	label: &'static str,
 ) -> annotate_snippets::Group<'a> {
 	use annotate_snippets::{AnnotationKind, Snippet};
 
-	let (path, source) = runtime.loader.file(frame.span.fid);
+	let (path, source) = files.file(frame.span.fid);
 	let annotation = AnnotationKind::Primary
 		.span(frame.span.range.into())
 		.label(label);
-	let snippet = Snippet::source(source)
+	let snippet = Snippet::source(&**source)
 		.path(path.display().to_string())
 		.annotation(annotation);
 

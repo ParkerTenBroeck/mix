@@ -17,7 +17,7 @@ use super::ast;
 pub struct Parser<'a> {
 	fid: FileId,
 	lex: Lexer<'a>,
-	reports: Reports<'a>,
+	reports: Reports,
 	last: Node<Token<'a>>,
 	curr: Node<Token<'a>>,
 }
@@ -29,7 +29,7 @@ struct State<'a> {
 	curr: Node<Token<'a>>,
 }
 
-pub type ParserResult<'a> = (Result<Node<ast::Expr<'a>>, ()>, Reports<'a>);
+pub type ParserResult<'a> = (Result<Node<ast::Expr<'a>>, ()>, Reports);
 
 impl<'a> Parser<'a> {
 	pub fn parse(str: &'a str, fid: FileId) -> ParserResult<'a> {

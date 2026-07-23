@@ -6,7 +6,7 @@ use crate::{
 	report::{Report, ReportAnnotation, ReportLevel},
 };
 
-impl From<Node<LexError>> for Report<'_> {
+impl From<Node<LexError>> for Report {
 	fn from(Node(err, span): Node<LexError>) -> Self {
 		let title = match err {
 			LexError::UnexpectedChar(char) => format!("unexpected char {char:?}"),

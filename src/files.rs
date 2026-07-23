@@ -1,7 +1,5 @@
 use std::{
-	borrow::Cow,
-	cell::RefCell,
-	path::{Path, PathBuf},
+	borrow::Cow, cell::RefCell, ops::Deref, path::{Path, PathBuf}, rc::Rc,
 };
 
 use std::range::Range;
@@ -52,74 +50,96 @@ impl<T> Node<T> {
 	}
 }
 
-type Error<'a> = Cow<'a, str>;
-type Storage = Result<(Cow<'static, str>, FileId), Error<'static>>;
-type LoaderResult = Result<Cow<'static, str>, Error<'static>>;
+type Error = Cow<'static, str>;
+type Storage = Result<(Rc<String>, FileId), Error>;
+type LoaderResult = Result<Rc<String>, Error>;
 type Func = dyn FnMut(&Path) -> LoaderResult;
-type Return<'a> = Result<(&'a str, FileId), Error<'a>>;
+type Return = Result<(Rc<String>, FileId), Error>;
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub struct FileId(u32);
 
-pub struct Files {
-	inner: RefCell<Inner>,
+#[derive(Clone)]
+pub struct FileLoader {
+	inner: Rc<RefCell<Inner>>,
 }
 
-impl std::fmt::Debug for Files {
+pub struct Files<'a>(std::cell::Ref<'a, Inner>);
+
+impl<'a> Deref for Files<'a>{
+	type Target = Inner;
+
+	fn deref(&self) -> &Self::Target {
+		&self.0
+	}
+}
+
+impl std::fmt::Debug for FileLoader {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		f.debug_struct("Files").finish()
 	}
 }
 
-struct Inner {
+pub struct Inner {
 	func: Box<Func>,
 	loaded: HashMap<PathBuf, Storage>,
 	fid_mapping: Vec<PathBuf>,
 }
 
-impl Files {
-	pub fn new(func: impl FnMut(&Path) -> LoaderResult + 'static) -> Self {
-		Self {
-			inner: RefCell::new(Inner {
-				func: Box::new(func),
-				loaded: Default::default(),
-				fid_mapping: Default::default(),
-			}),
-		}
-	}
-	pub fn load<'a>(&'a self, path: &Path) -> Return<'a> {
-		let mut myself = self.inner.borrow_mut();
-		if !myself.loaded.contains_key(path) {
-			let fid = FileId(myself.fid_mapping.len() as u32);
-			let result = (myself.func)(path);
-			myself.fid_mapping.push(path.to_path_buf());
-			myself
+impl Inner {
+	pub fn load(&mut self, path: &Path) -> Return{
+		if !self.loaded.contains_key(path) {
+			let fid = FileId(self.fid_mapping.len() as u32);
+			let result = (self.func)(path);
+			self.fid_mapping.push(path.to_path_buf());
+			self
 				.loaded
 				.insert(path.to_path_buf(), result.map(|cow| (cow, fid)));
 		}
 
-		match &myself.loaded[path] {
-			Ok((ok, fid)) => {
-				// We know this is safe so long as the backing owned string does not drop before the lifetime of this struct ends
-				let str = unsafe { std::mem::transmute::<&str, &'a str>(ok) };
-				Ok((str, *fid))
-			}
+		match &self.loaded[path] {
+			Ok((ok, fid)) => Ok((ok.clone(), *fid)),
 			Err(e) => Err(e.clone()),
 		}
 	}
 
-	pub fn file<'a>(&'a self, fid: FileId) -> (&'a Path, &'a str) {
-		let myself = self.inner.borrow();
-		let path = &myself.fid_mapping[fid.0 as usize];
-		let (contents, _) = myself.loaded[path]
+	pub fn file(&self, fid: FileId) -> (&Path, &Rc<String>) {
+		let path = &self.fid_mapping[fid.0 as usize];
+		let (contents, _) = self.loaded[path]
 			.as_ref()
 			.expect("requested file contents for a file that failed to load");
 
-		// The backing storage lives inside `self`, so extending these references to `'a`
-		// follows the same safety contract as `load`.
-		let path = unsafe { std::mem::transmute::<&Path, &'a Path>(path.as_path()) };
-		let contents = unsafe { std::mem::transmute::<&str, &'a str>(contents) };
-		(path, contents)
+		(&path, &contents)
+	}
+
+	pub fn exists(&mut self, path: &Path) -> bool {
+		self.load(path).is_ok()
+	}
+}
+
+impl FileLoader {
+	pub fn new(func: impl FnMut(&Path) -> LoaderResult + 'static) -> Self {
+		Self {
+			inner: Rc::new(RefCell::new(Inner {
+				func: Box::new(func),
+				loaded: Default::default(),
+				fid_mapping: Default::default(),
+			})),
+		}
+	}
+	
+	pub fn load(&self, path: &Path) -> Return {
+		self.inner.borrow_mut().load(path)
+	}
+
+	pub fn file(&self, fid: FileId) -> (PathBuf, Rc<String>) {
+		let inner = self.inner.borrow();
+		let (path, file) = inner.file(fid);
+		(path.to_owned(), file.clone())
+	}
+
+	pub fn files(&self) -> Files<'_>{
+		Files(self.inner.borrow())
 	}
 
 	pub fn exists(&self, path: &Path) -> bool {

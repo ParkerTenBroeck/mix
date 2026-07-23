@@ -2,8 +2,12 @@ use super::trace::*;
 use std::{borrow::Cow, collections::HashSet};
 
 use crate::{
-	bytecode::{CodeLocOffset, CodePos, OpCode}, runtime::{
-		LazyValue, Runtime, Value, scope::Scope, thunk::{Thunk, ThunkEvalErr}, value::{AttrSet, Lambda, List, StringKind, ValueType},
+	bytecode::{CodeLocOffset, CodePos, OpCode},
+	runtime::{
+		LazyValue, Runtime, Value,
+		scope::Scope,
+		thunk::{Thunk, ThunkEvalErr},
+		value::{AttrSet, Lambda, List, StringKind, ValueType},
 	},
 };
 
@@ -46,9 +50,7 @@ impl Frame {
 	}
 }
 
-pub struct Evaluator<'a, 'b> {
-	pub runtime: &'b Runtime<'a>,
-
+pub struct Evaluator {
 	pub value_stack: Vec<Value>,
 	pub thunk_stack: Vec<LazyValue>,
 
@@ -161,7 +163,7 @@ macro_rules! checked_zero_numeric_method {
 	};
 }
 
-impl<'a, 'b> Evaluator<'a, 'b> {
+impl Evaluator {
 	fn checked_float_result(
 		&self,
 		op_name: &'static str,
@@ -196,11 +198,7 @@ impl<'a, 'b> Evaluator<'a, 'b> {
 					}
 				},
 				int(lhs, rhs) = {
-					checked_int_result!(
-						"addition",
-						format!("{lhs} + {rhs}"),
-						lhs.checked_add(rhs),
-					)
+					checked_int_result!("addition", format!("{lhs} + {rhs}"), lhs.checked_add(rhs),)
 				},
 				float(lhs, rhs) =
 					{ self.checked_float_result("addition", lhs, rhs, |lhs, rhs| lhs + rhs) },
@@ -269,22 +267,15 @@ impl<'a, 'b> Evaluator<'a, 'b> {
 		zero = "cannot calculate {} % 0",
 	);
 
-	pub fn eval(
-		runtime: &'b Runtime<'a>,
-		lazy: LazyValue,
-		recursive: bool,
-	) -> Result<Value, ErrorTrace> {
-		let (pos, scope, thunk) = match lazy.try_into_value() {
-			Ok(value) => return Ok(value),
-			Err(thunk) => match thunk.eval_begin() {
-				Ok((pos, scope)) => (pos, scope, thunk),
-				Err(err) => {
-					return Err(ErrorTrace {
-						kind: EvalError::ThunkEval(err),
-						stack: Vec::new(),
-					});
-				}
-			},
+	pub fn begin_eval(thunk: Thunk, recursive: bool) -> Result<Evaluator, ErrorTrace> {
+		let (pos, scope, thunk) = match thunk.eval_begin() {
+			Ok((pos, scope)) => (pos, scope, thunk),
+			Err(err) => {
+				return Err(ErrorTrace {
+					kind: EvalError::ThunkEval(err),
+					stack: Vec::new(),
+				});
+			}
 		};
 		let frame_kind = if recursive {
 			FrameKind::ThunkEvalDeepRoot(thunk)
@@ -292,16 +283,13 @@ impl<'a, 'b> Evaluator<'a, 'b> {
 			FrameKind::ThunkEval(thunk)
 		};
 
-		let mut eval = Self {
-			runtime,
+		Ok(Self {
 			value_stack: Default::default(),
 			thunk_stack: Default::default(),
 			frame_stack: Default::default(),
 			curr_frame: Frame::new(pos, scope, frame_kind),
 			deeply_evaluated: Default::default(),
-		};
-		let res = eval.run_loop();
-		res.map_err(|kind| ErrorTrace::build(&eval, kind))
+		})
 	}
 
 	fn push_value(&mut self, value: Value) -> Result<(), EvalError> {
@@ -393,8 +381,8 @@ impl<'a, 'b> Evaluator<'a, 'b> {
 			.ok_or(EvalError::ByteCode("call stack"))
 	}
 
-	fn next_op(&mut self) -> Result<OpCode, EvalError> {
-		let Some((op, pos)) = self.runtime.program.get(self.curr_frame.pos) else {
+	fn next_op(&mut self, runtime: &Runtime) -> Result<OpCode, EvalError> {
+		let Some((op, pos)) = runtime.program.get(self.curr_frame.pos) else {
 			return Err(EvalError::ByteCode("instruction pointer overran bytecode"));
 		};
 		self.curr_frame.pos = pos;
@@ -529,12 +517,12 @@ impl<'a, 'b> Evaluator<'a, 'b> {
 		Ok(None)
 	}
 
-	fn apply(&mut self, arg_pos: CodePos) -> Result<(), EvalError> {
+	fn apply(&mut self, runtime: &Runtime, arg_pos: CodePos) -> Result<(), EvalError> {
 		let lambda = self.pop_lambda()?;
 
 		match lambda {
 			Lambda::Lambda { scope, lambda } => {
-				let lambda = self.runtime.program.get_lambda(lambda).ok_or_else(|| {
+				let lambda = runtime.program.get_lambda(lambda).ok_or_else(|| {
 					EvalError::Internal(
 						format!("invalid lambda id {} in bytecode", lambda.index()).into(),
 					)
@@ -547,14 +535,24 @@ impl<'a, 'b> Evaluator<'a, 'b> {
 				self.begin_frame(frame)?
 			}
 			Lambda::NativeLambda(native_lambda) => {
-				let value = native_lambda.call(self)?;
+				let value = native_lambda.call()?;
 				self.push_value(value)?
-			},
-			};
+			}
+		};
 		Ok(())
 	}
 
-	fn run_loop(&mut self) -> Result<Value, EvalError> {
+	pub fn run(&mut self, runtime: &Runtime) -> Result<Value, ErrorTrace> {
+		loop {
+			match self.do_step(runtime){
+				Ok(Some(ret)) => return Ok(ret),
+				Ok(None) => {},
+				Err(err) => return Err(ErrorTrace::build(runtime, self, err)),
+			}
+		}
+	}
+
+	fn do_step(&mut self, runtime: &Runtime) -> Result<Option<Value>, EvalError> {
 		use crate::bytecode::OpCode;
 
 		macro_rules! binop_cmp {
@@ -592,241 +590,238 @@ impl<'a, 'b> Evaluator<'a, 'b> {
 				self.push_value(result)?;
 			}};
 		}
-		loop {
-			let prev = self.curr_frame.pos;
-			match self.next_op()? {
-				OpCode::Add => {
-					let rhs = self.pop_value()?;
-					let lhs = self.pop_value()?;
-					let result = self.checked_add(lhs, rhs)?;
-					self.push_value(result)?;
+		let prev = self.curr_frame.pos;
+		match self.next_op(runtime)? {
+			OpCode::Add => {
+				let rhs = self.pop_value()?;
+				let lhs = self.pop_value()?;
+				let result = self.checked_add(lhs, rhs)?;
+				self.push_value(result)?;
+			}
+			OpCode::Sub => {
+				let rhs = self.pop_value()?;
+				let lhs = self.pop_value()?;
+				let result = self.checked_sub(lhs, rhs)?;
+				self.push_value(result)?;
+			}
+			OpCode::Mul => {
+				let rhs = self.pop_value()?;
+				let lhs = self.pop_value()?;
+				let result = self.checked_mul(lhs, rhs)?;
+				self.push_value(result)?;
+			}
+			OpCode::Div => {
+				let rhs = self.pop_value()?;
+				let lhs = self.pop_value()?;
+				let result = self.checked_div(lhs, rhs)?;
+				self.push_value(result)?;
+			}
+			OpCode::Rem => {
+				let rhs = self.pop_value()?;
+				let lhs = self.pop_value()?;
+				let result = self.checked_rem(lhs, rhs)?;
+				self.push_value(result)?;
+			}
+			OpCode::Eq => binop_cmp!("==", lhs, rhs, Value::Bool(lhs == rhs)),
+			OpCode::Ne => binop_cmp!("!=", lhs, rhs, Value::Bool(lhs != rhs)),
+			OpCode::Lt => binop_cmp!("<", lhs, rhs, Value::Bool(lhs < rhs)),
+			OpCode::Lte => binop_cmp!("<=", lhs, rhs, Value::Bool(lhs <= rhs)),
+			OpCode::Gt => binop_cmp!(">", lhs, rhs, Value::Bool(lhs > rhs)),
+			OpCode::Gte => binop_cmp!(">=", lhs, rhs, Value::Bool(lhs >= rhs)),
+			OpCode::Not => {
+				let result = match self.pop_value()? {
+					Value::Bool(bool) => Value::Bool(!bool),
+					other => {
+						return Err(EvalError::TypeMismatch {
+							expected: ValueType::Bool,
+							got: other.ty(),
+						});
+					}
+				};
+				self.push_value(result)?;
+			}
+			OpCode::Neg => {
+				let result = match self.pop_value()? {
+					Value::Int(int) => Value::Int(-int),
+					Value::Float(float) => Value::Float(-float),
+					other => {
+						return Err(EvalError::TypeMismatch {
+							expected: ValueType::Number,
+							got: other.ty(),
+						});
+					}
+				};
+				self.push_value(result)?;
+			}
+
+			op @ (OpCode::And(rhs) | OpCode::Or(rhs) | OpCode::LogImp(rhs)) => {
+				let lhs = self.pop_bool()?;
+				let result = match op {
+					OpCode::And(_) if !lhs => Some(false),
+					OpCode::Or(_) if lhs => Some(true),
+					OpCode::LogImp(_) if !lhs => Some(true),
+					_ => None,
+				};
+				if let Some(result) = result {
+					self.branch(rhs);
+					self.push_value(Value::Bool(result))?;
 				}
-				OpCode::Sub => {
-					let rhs = self.pop_value()?;
-					let lhs = self.pop_value()?;
-					let result = self.checked_sub(lhs, rhs)?;
-					self.push_value(result)?;
+			}
+
+			OpCode::If(else_off) => {
+				let cond = self.pop_bool()?;
+				if !cond {
+					self.branch(else_off);
 				}
-				OpCode::Mul => {
-					let rhs = self.pop_value()?;
-					let lhs = self.pop_value()?;
-					let result = self.checked_mul(lhs, rhs)?;
-					self.push_value(result)?;
+			}
+			OpCode::Branch(offset) => self.branch(offset),
+
+			OpCode::CreateAttrSet => {
+				self.value_stack.push(Value::AttrSet(AttrSet::default()));
+			}
+			OpCode::InitAttrExpr(expr) => {
+				let name = self.pop_string()?;
+				let mut attrset = self.pop_attrset()?;
+
+				attrset
+					.get_mut()
+					.insert(name, LazyValue::construct_begin(expr));
+				self.push_value(Value::AttrSet(attrset))?;
+			}
+			op @ (OpCode::FinalizeAttrSetRec | OpCode::FinalizeAttrSet) => {
+				let attrset = self.pop_attrset()?;
+				let scope = if op == OpCode::FinalizeAttrSetRec {
+					let mut scope = self.curr_frame.scope.clone();
+					for (name, value) in attrset.iter() {
+						scope.bind(name.clone(), value.clone());
+					}
+					scope
+				} else {
+					self.curr_frame.scope.clone()
+				};
+
+				for element in attrset.values() {
+					// ignore result as some values might have already been finalized (inherited from elsewhere)
+					_ = element.construct_end(scope.clone());
 				}
-				OpCode::Div => {
-					let rhs = self.pop_value()?;
-					let lhs = self.pop_value()?;
-					let result = self.checked_div(lhs, rhs)?;
-					self.push_value(result)?;
-				}
-				OpCode::Rem => {
-					let rhs = self.pop_value()?;
-					let lhs = self.pop_value()?;
-					let result = self.checked_rem(lhs, rhs)?;
-					self.push_value(result)?;
-				}
-				OpCode::Eq => binop_cmp!("==", lhs, rhs, Value::Bool(lhs == rhs)),
-				OpCode::Ne => binop_cmp!("!=", lhs, rhs, Value::Bool(lhs != rhs)),
-				OpCode::Lt => binop_cmp!("<", lhs, rhs, Value::Bool(lhs < rhs)),
-				OpCode::Lte => binop_cmp!("<=", lhs, rhs, Value::Bool(lhs <= rhs)),
-				OpCode::Gt => binop_cmp!(">", lhs, rhs, Value::Bool(lhs > rhs)),
-				OpCode::Gte => binop_cmp!(">=", lhs, rhs, Value::Bool(lhs >= rhs)),
-				OpCode::Not => {
-					let result = match self.pop_value()? {
-						Value::Bool(bool) => Value::Bool(!bool),
-						other => {
-							return Err(EvalError::TypeMismatch {
-								expected: ValueType::Bool,
-								got: other.ty(),
-							});
-						}
+				self.push_value(Value::AttrSet(attrset))?;
+			}
+			OpCode::CreateList(capacity) => {
+				self.push_value(Value::List(List::with_capacity(capacity)))?
+			}
+			OpCode::AppendList(expr) => {
+				let mut list = self.pop_list()?;
+				list.get_mut()
+					.push_back(LazyValue::uneval(expr, self.curr_frame.scope.clone()));
+				self.push_value(Value::List(list))?;
+			}
+			OpCode::Apply(arg_pos) => self.apply(runtime, arg_pos)?,
+
+			OpCode::LoadLambda(lambda_id) => {
+				let lambda = Lambda::Lambda {
+					scope: self.curr_frame.scope.clone(),
+					lambda: lambda_id,
+				};
+				self.push_value(Value::Lambda(lambda))?;
+			}
+			OpCode::LoadStr(str) => self.push_value(Value::String(runtime.program.get_str(str)))?,
+			OpCode::LoadInt(int) => self.push_value(Value::Int(int))?,
+			OpCode::LoadFloat(float) => self.push_value(Value::Float(float))?,
+			OpCode::LoadBool(bool) => self.push_value(Value::Bool(bool))?,
+
+			OpCode::HasAttr => {
+				let name = self.pop_string()?;
+				let attrset = self.pop_attrset()?;
+				self.push_value(Value::Bool(attrset.get(&name).is_some()))?;
+			}
+			OpCode::GetAttr => {
+				let index = self.pop_value()?;
+				let indexing = self.pop_value()?;
+				let lazy = self.get_attr(&indexing, &index)?;
+
+				if let Some(lazy) = lazy {
+					self.push_thunk(lazy)?;
+				} else {
+					let idx = match index {
+						Value::Bool(bool) => format!("{bool}"),
+						Value::Int(int) => format!("{int}"),
+						Value::Float(float) => format!("{float}"),
+						Value::String(str) => format!("{str:?}"),
+						Value::Path(path_buf) => path_buf.display().to_string(),
+						other => other.ty().to_string(),
 					};
-					self.push_value(result)?;
+					return Err(EvalError::MissingAttr(
+						format!("attr {idx} not found for {}", indexing.ty()).into(),
+					));
 				}
-				OpCode::Neg => {
-					let result = match self.pop_value()? {
-						Value::Int(int) => Value::Int(-int),
-						Value::Float(float) => Value::Float(-float),
-						other => {
-							return Err(EvalError::TypeMismatch {
-								expected: ValueType::Number,
-								got: other.ty(),
-							});
-						}
-					};
-					self.push_value(result)?;
+			}
+			OpCode::GetAttrOr(else_off) => {
+				let index = self.pop_value()?;
+				let indexing = self.pop_value()?;
+				let lazy = self.get_attr(&indexing, &index).ok().flatten();
+				if let Some(lazy) = lazy {
+					self.thunk_stack.push(lazy);
+				} else {
+					self.branch(else_off);
 				}
-
-				op @ (OpCode::And(rhs) | OpCode::Or(rhs) | OpCode::LogImp(rhs)) => {
-					let lhs = self.pop_bool()?;
-					let result = match op {
-						OpCode::And(_) if !lhs => Some(false),
-						OpCode::Or(_) if lhs => Some(true),
-						OpCode::LogImp(_) if !lhs => Some(true),
-						_ => None,
-					};
-					if let Some(result) = result {
-						self.branch(rhs);
-						self.push_value(Value::Bool(result))?;
-					}
-				}
-
-				OpCode::If(else_off) => {
-					let cond = self.pop_bool()?;
-					if !cond {
-						self.branch(else_off);
-					}
-				}
-				OpCode::Branch(offset) => self.branch(offset),
-
-				OpCode::CreateAttrSet => {
-					self.value_stack.push(Value::AttrSet(AttrSet::default()));
-				}
-				OpCode::InitAttrExpr(expr) => {
-					let name = self.pop_string()?;
-					let mut attrset = self.pop_attrset()?;
-
-					attrset
-						.get_mut()
-						.insert(name, LazyValue::construct_begin(expr));
-					self.push_value(Value::AttrSet(attrset))?;
-				}
-				op @ (OpCode::FinalizeAttrSetRec | OpCode::FinalizeAttrSet) => {
-					let attrset = self.pop_attrset()?;
-					let scope = if op == OpCode::FinalizeAttrSetRec {
-						let mut scope = self.curr_frame.scope.clone();
-						for (name, value) in attrset.iter() {
-							scope.bind(name.clone(), value.clone());
-						}
-						scope
-					} else {
-						self.curr_frame.scope.clone()
-					};
-
-					for element in attrset.values() {
-						// ignore result as some values might have already been finalized (inherited from elsewhere)
-						_ = element.construct_end(scope.clone());
-					}
-					self.push_value(Value::AttrSet(attrset))?;
-				}
-				OpCode::CreateList(capacity) => {
-					self.push_value(Value::List(List::with_capacity(capacity)))?
-				}
-				OpCode::AppendList(expr) => {
-					let mut list = self.pop_list()?;
-					list.get_mut()
-						.push_back(LazyValue::uneval(expr, self.curr_frame.scope.clone()));
-					self.push_value(Value::List(list))?;
-				}
-				OpCode::Apply(arg_pos) => self.apply(arg_pos)?,
-
-				OpCode::LoadLambda(lambda_id) => {
-					let lambda = Lambda::Lambda {
-						scope: self.curr_frame.scope.clone(),
-						lambda: lambda_id,
-					};
-					self.push_value(Value::Lambda(lambda))?;
-				}
-				OpCode::LoadStr(str) => {
-					self.push_value(Value::String(self.runtime.program.get_str(str)))?
-				}
-				OpCode::LoadInt(int) => self.push_value(Value::Int(int))?,
-				OpCode::LoadFloat(float) => self.push_value(Value::Float(float))?,
-				OpCode::LoadBool(bool) => self.push_value(Value::Bool(bool))?,
-
-				OpCode::HasAttr => {
-					let name = self.pop_string()?;
-					let attrset = self.pop_attrset()?;
-					self.push_value(Value::Bool(attrset.get(&name).is_some()))?;
-				}
-				OpCode::GetAttr => {
-					let index = self.pop_value()?;
-					let indexing = self.pop_value()?;
-					let lazy = self.get_attr(&indexing, &index)?;
-
-					if let Some(lazy) = lazy {
-						self.push_thunk(lazy)?;
-					} else {
-						let idx = match index {
-							Value::Bool(bool) => format!("{bool}"),
-							Value::Int(int) => format!("{int}"),
-							Value::Float(float) => format!("{float}"),
-							Value::String(str) => format!("{str:?}"),
-							Value::Path(path_buf) => path_buf.display().to_string(),
-							other => other.ty().to_string(),
-						};
-						break Err(EvalError::MissingAttr(
-							format!("attr {idx} not found for {}", indexing.ty()).into(),
-						));
-					}
-				}
-				OpCode::GetAttrOr(_expr_id) => {
-					let index = self.pop_value()?;
-					let indexing = self.pop_value()?;
-					let lazy = self.get_attr(&indexing, &index)?;
-					if let Some(lazy) = lazy {
-						self.thunk_stack.push(lazy);
-					} else {
-						todo!()
-					}
-				}
-				OpCode::EvalThunk => {
-					let thunk = self.pop_thunk()?;
-					match thunk.try_get_value() {
-						Ok(value) => self.push_value(value)?,
-						Err(thunk) => {
-							let (pos, scope) = thunk.eval_begin().map_err(EvalError::ThunkEval)?;
-							self.begin_frame(Frame::new(pos, scope, FrameKind::ThunkEval(thunk)))?;
-						}
-					}
-				}
-				OpCode::BindThunkScope => {
-					let attr = self.pop_string()?;
-					let thunk = self.pop_thunk()?;
-					self.curr_frame.scope.bind(attr, thunk);
-				}
-				OpCode::BindValueScope => {
-					let attr = self.pop_string()?;
-					let value = self.pop_value()?;
-					self.curr_frame.scope.bind(attr, value.into());
-				}
-
-				OpCode::LoadScope => {
-					let name = self.pop_string()?;
-					let Some(lazy) = self.curr_frame.scope.resolve(&name) else {
-						return Err(EvalError::MissingBinding(
-							format!("failed to resolve {name:?}").into(),
-						));
-					};
-					match lazy.try_get_value() {
-						Ok(ok) => self.push_value(ok)?,
-						Err(thunk) => {
-							let (pos, scope) = thunk.eval_begin().map_err(EvalError::ThunkEval)?;
-							self.begin_frame(Frame::new(pos, scope, FrameKind::ThunkEval(thunk)))?;
-						}
-					}
-				}
-
-				OpCode::PopV => _ = self.pop_value()?,
-				OpCode::DupV => {
-					let value = self.pop_value()?;
-					self.push_value(value.clone())?;
-					self.push_value(value)?;
-				}
-
-				OpCode::PopT => _ = self.pop_thunk()?,
-				OpCode::DupT => {
-					let thunk = self.pop_thunk()?;
-					self.push_thunk(thunk.clone())?;
-					self.push_thunk(thunk)?;
-				}
-
-				OpCode::Ret => {
-					if let Some(value) = self.ret(prev)? {
-						break Ok(value);
+			}
+			OpCode::EvalThunk => {
+				let thunk = self.pop_thunk()?;
+				match thunk.try_get_value() {
+					Ok(value) => self.push_value(value)?,
+					Err(thunk) => {
+						let (pos, scope) = thunk.eval_begin().map_err(EvalError::ThunkEval)?;
+						self.begin_frame(Frame::new(pos, scope, FrameKind::ThunkEval(thunk)))?;
 					}
 				}
 			}
+			OpCode::BindThunkScope => {
+				let attr = self.pop_string()?;
+				let thunk = self.pop_thunk()?;
+				self.curr_frame.scope.bind(attr, thunk);
+			}
+			OpCode::BindValueScope => {
+				let attr = self.pop_string()?;
+				let value = self.pop_value()?;
+				self.curr_frame.scope.bind(attr, value.into());
+			}
+
+			OpCode::LoadScope => {
+				let name = self.pop_string()?;
+				let Some(lazy) = self.curr_frame.scope.resolve(&name) else {
+					return Err(EvalError::MissingBinding(
+						format!("failed to resolve {name:?}").into(),
+					));
+				};
+				match lazy.try_get_value() {
+					Ok(ok) => self.push_value(ok)?,
+					Err(thunk) => {
+						let (pos, scope) = thunk.eval_begin().map_err(EvalError::ThunkEval)?;
+						self.begin_frame(Frame::new(pos, scope, FrameKind::ThunkEval(thunk)))?;
+					}
+				}
+			}
+
+			OpCode::PopV => _ = self.pop_value()?,
+			OpCode::DupV => {
+				let value = self.pop_value()?;
+				self.push_value(value.clone())?;
+				self.push_value(value)?;
+			}
+
+			OpCode::PopT => _ = self.pop_thunk()?,
+			OpCode::DupT => {
+				let thunk = self.pop_thunk()?;
+				self.push_thunk(thunk.clone())?;
+				self.push_thunk(thunk)?;
+			}
+
+			OpCode::Ret => {
+				if let Some(value) = self.ret(prev)? {
+					return Ok(Some(value));
+				}
+			}
 		}
+		Ok(None)
 	}
 }

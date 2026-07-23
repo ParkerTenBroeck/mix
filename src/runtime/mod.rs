@@ -2,14 +2,14 @@ pub mod eval;
 pub mod lazy;
 pub mod pretty;
 pub mod scope;
+pub mod string;
 pub mod thunk;
 pub mod trace;
 pub mod value;
-pub mod string;
 
 use crate::{
 	bytecode::Program,
-	files::Files,
+	files::FileLoader,
 	mir::lowerer::MirLowerer,
 	parse::Parser,
 	report::Reports,
@@ -17,14 +17,14 @@ use crate::{
 };
 
 #[derive(Debug)]
-pub struct Runtime<'a> {
-	pub loader: &'a Files,
+pub struct Runtime {
+	pub loader: FileLoader,
 	pub program: Program,
 	default_scope: Scope,
 }
 
-impl<'a> Runtime<'a> {
-	pub fn new(loader: &'a Files, top_scope: Scope) -> Self {
+impl Runtime {
+	pub fn new(loader: FileLoader, top_scope: Scope) -> Self {
 		Self {
 			loader,
 			default_scope: top_scope,
@@ -32,10 +32,10 @@ impl<'a> Runtime<'a> {
 		}
 	}
 
-	pub fn load(&mut self, path: &str) -> Result<LazyValue, Reports<'a>> {
+	pub fn load(&mut self, path: &str) -> Result<LazyValue, Reports> {
 		let (file, fid) = self.loader.load(path.as_ref()).unwrap();
 
-		let (expr, reports) = Parser::parse(file, fid);
+		let (expr, reports) = Parser::parse(&*file, fid);
 		let Ok(expr) = expr else {
 			return Err(reports);
 		};
@@ -50,18 +50,16 @@ impl<'a> Runtime<'a> {
 	}
 
 	pub fn eval(&mut self, lazy: LazyValue) -> Result<Value, ErrorTrace> {
-		Evaluator::eval(self, lazy, false)
+		match lazy.try_get_value(){
+			Ok(value) => Ok(value),
+			Err(thunk) => Evaluator::begin_eval(thunk, false)?.run(self),
+		}
 	}
 
 	pub fn deep_eval(&mut self, lazy: LazyValue) -> Result<Value, ErrorTrace> {
-		Evaluator::eval(self, lazy, true)
-	}
-
-	pub fn pretty_value<'rt>(&'rt self, value: &'rt Value) -> pretty::PrettyValue<'rt, 'a> {
-		pretty::PrettyValue::new(self, value)
-	}
-
-	pub fn pretty_lazy<'rt>(&'rt self, value: &'rt LazyValue) -> pretty::PrettyLazyValue<'rt, 'a> {
-		pretty::PrettyLazyValue::new(self, value)
+		match lazy.try_get_value(){
+			Ok(value) => Ok(value),
+			Err(thunk) => Evaluator::begin_eval(thunk, true)?.run(self),
+		}
 	}
 }

@@ -1,5 +1,5 @@
 use crate::{
-	bytecode::{ByteCodeBuilder, CodePos, ExprBuilder, OpCode, ProgramBuilder},
+	bytecode::{ByteCodeBuilder, CodePos, OpCode, ProgramBuilder},
 	files::Node,
 	mir,
 };
@@ -13,7 +13,7 @@ impl Compiler {
 	}
 
 	pub fn compile_top_level<'a>(
-		&mut self,
+		&self,
 		mut builder: impl ProgramBuilder,
 		expr: &Node<mir::Expr<'a>>,
 	) -> CodePos {
@@ -24,8 +24,8 @@ impl Compiler {
 	}
 
 	fn compile_lambda_pattern_rec<'a, 'b>(
-		&mut self,
-		builder: &'b mut ExprBuilder<'a>,
+		&self,
+		builder: &'b mut ByteCodeBuilder<'a>,
 		pattern: &Node<mir::Pattern<'_>>,
 	) {
 		let eval = pattern.0.destruct.is_some() || pattern.0.ty.is_some();
@@ -72,24 +72,23 @@ impl Compiler {
 	}
 
 	fn compile_lambda_pattern<'a, 'b>(
-		&mut self,
-		builder: &'b mut ExprBuilder<'a>,
+		&self,
+		builder: &'b mut ByteCodeBuilder<'a>,
 		pattern: &Node<mir::Pattern<'_>>,
 	) {
 		self.compile_lambda_pattern_rec(builder, pattern);
 	}
 
 	fn compile_expr<'a, 'b>(
-		&mut self,
-		builder: &'b mut ExprBuilder<'a>,
+		&self,
+		builder: &'b mut ByteCodeBuilder<'a>,
 		expr: &Node<mir::Expr<'_>>,
-	) -> &'b mut ExprBuilder<'a> {
+	) -> &'b mut ByteCodeBuilder<'a> {
 		let Node(ast_expr, span) = expr;
 
 		match ast_expr {
 			mir::Expr::Lambda(lambda) => {
-				let arg_name = lambda.arg.0.binding.map(|name| name.0);
-				builder.emit_load_lambda(*span, arg_name, |builder| {
+				builder.emit_load_lambda(*span, |builder| {
 					self.compile_lambda_pattern(builder, &lambda.arg);
 					self.compile_expr(builder, &lambda.body);
 				});
@@ -190,13 +189,32 @@ impl Compiler {
 			}
 			mir::Expr::AccessAttr { expr, path, or } => {
 				self.compile_expr(builder, expr);
-				for part in &path.0.parts {
-					self.compile_attr_part(builder, part);
-					builder.emit(OpCode::GetAttr).emit(OpCode::EvalThunk);
+				if let Some(or) = or {
+					builder.emit_get_attr_or(
+						path.0.parts.iter().map(|part| {
+							|builder: &mut ByteCodeBuilder<'_>| {
+								self.compile_attr_part(builder, part)
+							}
+						}),
+						|builder| _ = builder.emit(OpCode::EvalThunk),
+						|builder| _ = self.compile_expr(builder, or),
+					);
+				} else {
+					for part in &path.0.parts {
+						self.compile_attr_part(builder, part);
+						builder.emit(OpCode::GetAttr).emit(OpCode::EvalThunk);
+					}
 				}
 			}
 			mir::Expr::HasAttr { expr, path } => {
-				
+				self.compile_expr(builder, expr);
+				builder.emit_get_attr_or(
+					path.0.parts.iter().map(|part| {
+						|builder: &mut ByteCodeBuilder<'_>| self.compile_attr_part(builder, part)
+					}),
+					|builder| _ = builder.emit(OpCode::PopT).emit_load_bool(true),
+					|builder| _ = builder.emit_load_bool(false),
+				);
 			}
 			mir::Expr::Ident("true") => _ = builder.emit_load_bool(true),
 			mir::Expr::Ident("false") => _ = builder.emit_load_bool(false),
@@ -209,7 +227,7 @@ impl Compiler {
 		builder
 	}
 
-	fn compile_attr_part(&mut self, builder: &mut ExprBuilder, part: &Node<mir::AttrPathPart>) {
+	fn compile_attr_part(&self, builder: &mut ByteCodeBuilder<'_>, part: &Node<mir::AttrPathPart>) {
 		match &part.0 {
 			mir::AttrPathPart::Ident(ident) => {
 				builder.emit_load_str(ident);

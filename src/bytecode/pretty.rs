@@ -1,8 +1,7 @@
 use std::fmt;
 
 use crate::{
-	bytecode::{CodeLocOffset, CodePos, OpCode, Program},
-	files::{Files, Span},
+	bytecode::{CodeLocOffset, CodePos, OpCode, Program}, files::{FileLoader, Files, Span},
 };
 
 pub fn render_program(program: &Program, files: &Files) -> String {
@@ -21,14 +20,9 @@ pub fn render_program(program: &Program, files: &Files) -> String {
 	if !program.lambdas().is_empty() {
 		out.push_str("\nlambdas:\n");
 		for (idx, lambda) in program.lambdas().iter().enumerate() {
-			let arg = lambda
-				.arg_name
-				.map(|id| format!(" arg=#{} {:?}", id.index(), program.get_str(id)))
-				.unwrap_or_default();
 			out.push_str(&format!(
-				"  lambda#{}{} @{} {}\n",
+				"  lambda#{} @{} {}\n",
 				idx + 1,
-				arg,
 				fmt_pos(lambda.code),
 				format_span(files, lambda.span)
 			));
@@ -77,18 +71,18 @@ pub fn render_program(program: &Program, files: &Files) -> String {
 
 pub struct PrettyProgram<'a> {
 	program: &'a Program,
-	files: &'a Files,
+	files: &'a FileLoader,
 }
 
 impl<'a> PrettyProgram<'a> {
-	pub fn new(program: &'a Program, files: &'a Files) -> Self {
+	pub fn new(program: &'a Program, files: &'a FileLoader) -> Self {
 		Self { program, files }
 	}
 }
 
 impl fmt::Display for PrettyProgram<'_> {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		f.write_str(&render_program(self.program, self.files))
+		f.write_str(&render_program(self.program, &self.files.files()))
 	}
 }
 
@@ -119,21 +113,16 @@ fn format_op(program: &Program, pos: CodePos, op: OpCode) -> String {
 		OpCode::AppendList(expr) => format!("AppendList @{}", fmt_pos(expr)),
 		OpCode::Apply(expr) => format!("Apply @{}", fmt_pos(expr)),
 		OpCode::LoadLambda(lambda) => {
-			let extra = program
-				.get_lambda(lambda)
-				.and_then(|lambda| lambda.arg_name)
-				.map(|id| format!(" (#{} {:?})", id.index(), program.get_str(id)))
-				.unwrap_or_default();
-			format!("LoadLambda #{}{}", lambda.index(), extra)
+			format!("LoadLambda #{}", lambda.index())
 		}
-		OpCode::LoadStr(id) => format!("LoadStr #{} {:?}", id.index(), program.get_str(id)),
+		OpCode::LoadStr(id) => format!("LoadStr #{} {:?}", id.index(), &*program.get_str(id)),
 		OpCode::LoadInt(int) => format!("LoadInt {int}"),
 		OpCode::LoadFloat(float) => format!("LoadFloat {float}"),
 		OpCode::LoadBool(value) => format!("LoadBool {value}"),
 		OpCode::LoadScope => "LoadScope".into(),
 		OpCode::HasAttr => "HasAttr".into(),
 		OpCode::GetAttr => "GetAttr".into(),
-		OpCode::GetAttrOr(expr) => format!("GetAttrOr @{}", fmt_pos(expr)),
+		OpCode::GetAttrOr(offset) => format_jump("GetAttrOr", pos, offset),
 		OpCode::Branch(offset) => format_jump("Branch", pos, offset),
 		OpCode::PopV => "PopV".into(),
 		OpCode::DupV => "DupV".into(),

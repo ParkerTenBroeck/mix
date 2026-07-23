@@ -8,18 +8,18 @@ use crate::{
 	report::Reports,
 };
 
-pub type MirLowerResult<'a> = (Result<Node<mir::Expr<'a>>, ()>, Reports<'a>);
+pub type MirLowerResult<'a> = (Result<Node<mir::Expr<'a>>, ()>, Reports);
 
-pub struct MirLowerer<'a> {
-	pub(crate) reports: Reports<'a>,
+pub struct MirLowerer {
+	pub(crate) reports: Reports,
 }
 
-impl<'a> MirLowerer<'a> {
-	pub fn new(reports: Reports<'a>) -> Self {
+impl MirLowerer {
+	pub fn new(reports: Reports) -> Self {
 		Self { reports }
 	}
 
-	pub fn lower(mut self, expr: Node<ast::Expr<'a>>) -> MirLowerResult<'a> {
+	pub fn lower<'a>(mut self, expr: Node<ast::Expr<'a>>) -> MirLowerResult<'a> {
 		let expr = self.lower_expr(expr);
 		let reports = self.reports;
 		(
@@ -28,7 +28,7 @@ impl<'a> MirLowerer<'a> {
 		)
 	}
 
-	fn lower_expr(&mut self, Node(expr, span): Node<ast::Expr<'a>>) -> Node<mir::Expr<'a>> {
+	fn lower_expr<'a>(&mut self, Node(expr, span): Node<ast::Expr<'a>>) -> Node<mir::Expr<'a>> {
 		let expr = match expr {
 			ast::Expr::Lambda(lambda) => mir::Expr::Lambda(mir::Lambda {
 				arg: self.lower_lambda_arg(lambda.arg),
@@ -81,7 +81,7 @@ impl<'a> MirLowerer<'a> {
 		Node(expr, span)
 	}
 
-	fn lower_pattern(&mut self, pattern: Node<ast::Pattern<'a>>) -> Node<mir::Pattern<'a>> {
+	fn lower_pattern<'a>(&mut self, pattern: Node<ast::Pattern<'a>>) -> Node<mir::Pattern<'a>> {
 		pattern.map(|pattern| mir::Pattern {
 			binding: pattern.binding,
 			ty: pattern.ty.map(|ty| self.lower_type(ty)),
@@ -91,7 +91,7 @@ impl<'a> MirLowerer<'a> {
 		})
 	}
 
-	fn lower_pattern_destruct_kind(
+	fn lower_pattern_destruct_kind<'a>(
 		&mut self,
 		destruct: Node<ast::PatternDestructKind<'a>>,
 	) -> Node<mir::PatternDestructKind<'a>> {
@@ -109,13 +109,13 @@ impl<'a> MirLowerer<'a> {
 		})
 	}
 
-	fn lower_lambda_arg(&mut self, arg: Node<ast::Pattern<'a>>) -> Node<mir::Pattern<'a>> {
+	fn lower_lambda_arg<'a>(&mut self, arg: Node<ast::Pattern<'a>>) -> Node<mir::Pattern<'a>> {
 		let arg = self.lower_pattern(arg);
 		self.verify_lambda_pattern_bindings(&arg);
 		arg
 	}
 
-	fn lower_let_bindings(
+	fn lower_let_bindings<'a>(
 		&mut self,
 		bindings: Vec<ast::LetBinding<'a>>,
 	) -> Vec<mir::LetBinding<'a>> {
@@ -130,7 +130,7 @@ impl<'a> MirLowerer<'a> {
 		bindings
 	}
 
-	fn lower_attr_pattern_destruct(
+	fn lower_attr_pattern_destruct<'a>(
 		&mut self,
 		fields: Vec<Node<ast::AttrPattern<'a>>>,
 		strict: bool,
@@ -141,7 +141,7 @@ impl<'a> MirLowerer<'a> {
 		}
 	}
 
-	fn lower_attr_pattern_fields(
+	fn lower_attr_pattern_fields<'a>(
 		&mut self,
 		fields: Vec<Node<ast::AttrPattern<'a>>>,
 	) -> Vec<Node<mir::AttrPattern<'a>>> {
@@ -156,7 +156,7 @@ impl<'a> MirLowerer<'a> {
 			.collect()
 	}
 
-	fn lower_pattern_list_kind(&self, kind: ast::PatternListKind) -> mir::PatternListKind {
+	fn lower_pattern_list_kind<'a>(&self, kind: ast::PatternListKind) -> mir::PatternListKind {
 		match kind {
 			ast::PatternListKind::Strict => mir::PatternListKind::Strict,
 			ast::PatternListKind::TrailLeft => mir::PatternListKind::TrailLeft,
@@ -164,11 +164,11 @@ impl<'a> MirLowerer<'a> {
 		}
 	}
 
-	fn lower_type(&mut self, ty: Node<ast::Type<'a>>) -> Node<mir::Type<'a>> {
+	fn lower_type<'a>(&mut self, ty: Node<ast::Type<'a>>) -> Node<mir::Type<'a>> {
 		ty.map(|ty| mir::Type { name: ty.name })
 	}
 
-	fn lower_binop(
+	fn lower_binop<'a>(
 		&mut self,
 		lhs: Node<ast::Expr<'a>>,
 		op: Node<ast::BinOp>,
@@ -191,7 +191,7 @@ impl<'a> MirLowerer<'a> {
 		}
 	}
 
-	fn lower_attr_set(&mut self, attrs: Vec<Node<ast::Attr<'a>>>) -> mir::AttrSet<'a> {
+	fn lower_attr_set<'a>(&mut self, attrs: Vec<Node<ast::Attr<'a>>>) -> mir::AttrSet<'a> {
 		let mut static_attrs = Vec::new();
 		let mut dynamic_attrs = Vec::new();
 
@@ -219,7 +219,7 @@ impl<'a> MirLowerer<'a> {
 		}
 	}
 
-	fn finish_static_attr(&mut self, attr: StaticAttrBuilder<'a>) -> Node<mir::StaticAttr<'a>> {
+	fn finish_static_attr<'a>(&mut self, attr: StaticAttrBuilder<'a>) -> Node<mir::StaticAttr<'a>> {
 		let value = if !attr.children.is_empty() {
 			let span = attr.full_span;
 			Some(Node(
@@ -246,7 +246,7 @@ impl<'a> MirLowerer<'a> {
 		)
 	}
 
-	fn lower_dynamic_attr(
+	fn lower_dynamic_attr<'a>(
 		&mut self,
 		path: Node<ast::AttrPath<'a>>,
 		value: Option<Node<mir::Expr<'a>>>,
@@ -269,7 +269,7 @@ impl<'a> MirLowerer<'a> {
 		Node(mir::DynamicAttr { part, value }, span)
 	}
 
-	fn build_dynamic_attr(
+	fn build_dynamic_attr<'a>(
 		&mut self,
 		mut parts: Vec<Node<mir::AttrPathPart<'a>>>,
 		value: Option<Node<mir::Expr<'a>>>,
@@ -291,7 +291,7 @@ impl<'a> MirLowerer<'a> {
 		Node(mir::DynamicAttr { part, value }, span)
 	}
 
-	fn lower_attr_path(&mut self, path: Node<ast::AttrPath<'a>>) -> Node<mir::AttrPath<'a>> {
+	fn lower_attr_path<'a>(&mut self, path: Node<ast::AttrPath<'a>>) -> Node<mir::AttrPath<'a>> {
 		let span = path.1;
 		Node(
 			mir::AttrPath {
@@ -301,7 +301,7 @@ impl<'a> MirLowerer<'a> {
 		)
 	}
 
-	fn lower_attr_path_parts(
+	fn lower_attr_path_parts<'a>(
 		&mut self,
 		Node(path, _span): Node<ast::AttrPath<'a>>,
 	) -> Vec<Node<mir::AttrPathPart<'a>>> {

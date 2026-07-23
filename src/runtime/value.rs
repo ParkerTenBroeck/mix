@@ -1,10 +1,16 @@
 pub use super::string::*;
 
 use std::{
-	collections::VecDeque, fmt::Debug, ops::{Deref, DerefMut}, path::PathBuf,
+	collections::VecDeque,
+	fmt::Debug,
+	ops::{Deref, DerefMut},
+	path::PathBuf,
 };
 
-use crate::{HashMap, runtime::{eval::{EvalError, Evaluator}}};
+use crate::{
+	HashMap,
+	runtime::eval::{EvalError, Evaluator},
+};
 
 use dumpster::{Trace, unsync::Gc};
 
@@ -99,7 +105,7 @@ pub struct NativeLambda {
 	inner: Gc<Box<dyn NativeLambdaTrait>>, // silly rust
 }
 
-impl Deref for NativeLambda{
+impl Deref for NativeLambda {
 	type Target = dyn NativeLambdaTrait;
 
 	fn deref(&self) -> &Self::Target {
@@ -108,14 +114,16 @@ impl Deref for NativeLambda{
 }
 
 impl NativeLambda {
-	pub fn new<T: NativeLambdaTrait>(lambda: T) -> Self{
-		Self { inner: Gc::new(Box::new(lambda)) }
+	pub fn new<T: NativeLambdaTrait>(lambda: T) -> Self {
+		Self {
+			inner: Gc::new(Box::new(lambda)),
+		}
 	}
 }
 
 pub trait NativeLambdaTrait: Trace + Debug + 'static {
 	fn identifier(&self) -> &str;
-	fn call<'a, 'b>(&self, rt: &mut Evaluator<'a, 'b>) -> Result<Value, EvalError>;
+	fn call<'a, 'b>(&self) -> Result<Value, EvalError>;
 }
 
 impl std::fmt::Debug for NativeLambda {
@@ -189,16 +197,14 @@ impl std::fmt::Debug for AttrSetInner {
 	}
 }
 
-unsafe impl<Z: dumpster::Visitor>
-    dumpster::TraceWith<Z> for AttrSetInner
-{
-    fn accept(&self, visitor: &mut Z) -> Result<(), ()> {
-        for (k, v) in &self.0 {
-            k.accept(visitor)?;
-            v.accept(visitor)?;
-        }
+unsafe impl<Z: dumpster::Visitor> dumpster::TraceWith<Z> for AttrSetInner {
+	fn accept(&self, visitor: &mut Z) -> Result<(), ()> {
+		for (k, v) in &self.0 {
+			k.accept(visitor)?;
+			v.accept(visitor)?;
+		}
 		Ok(())
-    }
+	}
 }
 
 impl AttrSet {
@@ -228,5 +234,3 @@ impl Deref for AttrSet {
 		&*self.inner
 	}
 }
-
-

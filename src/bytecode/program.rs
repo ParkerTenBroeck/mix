@@ -66,7 +66,6 @@ pub struct ExprId(NonZeroUsize);
 pub struct Lambda {
 	pub code: CodePos,
 	pub span: Span,
-	pub arg_name: Option<StrId>,
 }
 
 #[derive(Debug)]
@@ -86,7 +85,7 @@ pub struct Program {
 
 impl Program {
 	pub fn compile(&mut self, expr: &Node<mir::Expr>) -> CodePos {
-		let mut compiler = crate::compiler::Compiler::new();
+		let compiler = crate::compiler::Compiler::new();
 		compiler.compile_top_level(self, expr)
 	}
 
@@ -95,7 +94,9 @@ impl Program {
 	}
 
 	pub fn get_str(&self, str: StrId) -> crate::runtime::value::StringKind {
-		crate::runtime::value::StringKind::Interned(self.strings.get(str.0.get() - 1).unwrap().clone())
+		crate::runtime::value::StringKind::Interned(
+			self.strings.get(str.0.get() - 1).unwrap().clone(),
+		)
 	}
 
 	pub fn get_lambda(&self, lambda: LambdaId) -> Option<&Lambda> {
@@ -130,8 +131,12 @@ impl ProgramBuilder for Program {
 		StrId(NonZeroUsize::new(self.strings.len()).unwrap())
 	}
 
-	fn emit_expr(&mut self, span: Span, expr: impl FnOnce(&mut ExprBuilder)) -> (ExprId, CodePos) {
-		let mut builder = ExprBuilder::new(self);
+	fn emit_expr(
+		&mut self,
+		span: Span,
+		expr: impl FnOnce(&mut ByteCodeBuilder),
+	) -> (ExprId, CodePos) {
+		let mut builder = ByteCodeBuilder::new(self);
 		expr(&mut builder);
 		builder.emit(OpCode::Ret);
 
@@ -152,16 +157,10 @@ impl ProgramBuilder for Program {
 	fn emit_lambda(
 		&mut self,
 		span: Span,
-		arg_name: Option<&str>,
-		expr: impl FnOnce(&mut ExprBuilder),
+		expr: impl FnOnce(&mut ByteCodeBuilder),
 	) -> (LambdaId, CodePos) {
 		let (_, code) = self.emit_expr(span, expr);
-		let arg_name = arg_name.map(|str| self.emit_str(str));
-		self.lambdas.push(Lambda {
-			code,
-			span,
-			arg_name,
-		});
+		self.lambdas.push(Lambda { code, span });
 		(
 			LambdaId(NonZeroUsize::new(self.lambdas.len()).unwrap()),
 			code,

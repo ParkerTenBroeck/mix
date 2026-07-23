@@ -4,20 +4,20 @@ pub mod parser;
 
 use std::borrow::Cow;
 
-use crate::files::{FileId, Files, Span};
+use crate::files::{FileId, FileLoader, Files, Span};
 
 #[derive(Clone, Debug, Default)]
-pub struct Reports<'a> {
-	reports: Vec<Report<'a>>,
+pub struct Reports {
+	reports: Vec<Report>,
 }
 
 #[derive(Clone, Debug)]
-pub struct Report<'a> {
+pub struct Report {
 	pub level: ReportLevel,
 	pub span: Span,
-	pub title: Cow<'a, str>,
-	pub annotations: Vec<ReportAnnotation<'a>>,
-	pub helps: Vec<ReportHelp<'a>>,
+	pub title: Cow<'static, str>,
+	pub annotations: Vec<ReportAnnotation>,
+	pub helps: Vec<ReportHelp>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -28,10 +28,10 @@ pub enum ReportLevel {
 }
 
 #[derive(Clone, Debug)]
-pub struct ReportAnnotation<'a> {
+pub struct ReportAnnotation {
 	pub kind: ReportAnnotationKind,
 	pub span: Span,
-	pub label: Option<Cow<'a, str>>,
+	pub label: Option<Cow<'static, str>>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -41,15 +41,15 @@ pub enum ReportAnnotationKind {
 }
 
 #[derive(Clone, Debug)]
-pub struct ReportHelp<'a> {
-	pub title: Cow<'a, str>,
-	pub patches: Vec<ReportPatch<'a>>,
+pub struct ReportHelp {
+	pub title: Cow<'static, str>,
+	pub patches: Vec<ReportPatch>,
 }
 
 #[derive(Clone, Debug)]
-pub struct ReportPatch<'a> {
+pub struct ReportPatch {
 	pub span: Span,
-	pub replacement: Cow<'a, str>,
+	pub replacement: Cow<'static, str>,
 }
 
 #[derive(Clone, Debug)]
@@ -77,7 +77,7 @@ struct FilePatch {
 	replacement: String,
 }
 
-impl<'a> ReportAnnotation<'a> {
+impl ReportAnnotation {
 	pub fn primary(span: Span) -> Self {
 		Self {
 			kind: ReportAnnotationKind::Primary,
@@ -86,7 +86,7 @@ impl<'a> ReportAnnotation<'a> {
 		}
 	}
 
-	pub fn context(span: Span, label: impl Into<Cow<'a, str>>) -> Self {
+	pub fn context(span: Span, label: impl Into<Cow<'static, str>>) -> Self {
 		Self {
 			kind: ReportAnnotationKind::Context,
 			span,
@@ -95,15 +95,15 @@ impl<'a> ReportAnnotation<'a> {
 	}
 }
 
-impl<'a> ReportHelp<'a> {
-	pub fn new(title: impl Into<Cow<'a, str>>) -> Self {
+impl ReportHelp {
+	pub fn new(title: impl Into<Cow<'static, str>>) -> Self {
 		Self {
 			title: title.into(),
 			patches: vec![],
 		}
 	}
 
-	pub fn with_patch(mut self, span: Span, replacement: impl Into<Cow<'a, str>>) -> Self {
+	pub fn with_patch(mut self, span: Span, replacement: impl Into<Cow<'static, str>>) -> Self {
 		self.patches.push(ReportPatch {
 			span,
 			replacement: replacement.into(),
@@ -112,8 +112,8 @@ impl<'a> ReportHelp<'a> {
 	}
 }
 
-impl<'a> Reports<'a> {
-	pub fn emit(&mut self, report: impl Into<Report<'a>>) {
+impl Reports {
+	pub fn emit(&mut self, report: impl Into<Report>) {
 		self.reports.push(report.into());
 	}
 
@@ -138,7 +138,7 @@ impl<'a> Reports<'a> {
 		}
 	}
 
-	pub fn render(&self, files: &Files) -> Vec<String> {
+	pub fn render(&self, files: &Files<'_>) -> Vec<String> {
 		self.reports
 			.iter()
 			.map(|report| report.render(files))
@@ -146,9 +146,10 @@ impl<'a> Reports<'a> {
 	}
 }
 
-impl<'a> Report<'a> {
-	pub fn render(&self, files: &Files) -> String {
+impl Report {
+	pub fn render(&self, files: &Files<'_>) -> String {
 		use annotate_snippets::*;
+		
 
 		let renderer = Renderer::styled().decor_style(renderer::DecorStyle::Unicode);
 		let annotation_groups = self.annotation_groups(files);
@@ -158,11 +159,10 @@ impl<'a> Report<'a> {
 		renderer.render(&groups)
 	}
 
-	fn annotation_groups<'f>(&self, files: &'f Files) -> Vec<annotate_snippets::Group<'f>> {
+	fn annotation_groups<'f>(&self, files: &'f Files<'f>) -> Vec<annotate_snippets::Group<'f>> {
 		use annotate_snippets::{Annotation, AnnotationKind, Group, Snippet};
 
-		let grouped = self.group_annotations();
-		grouped
+		self.group_annotations()
 			.into_iter()
 			.enumerate()
 			.map(|(index, file_annotations)| {
@@ -183,7 +183,7 @@ impl<'a> Report<'a> {
 						}
 					})
 					.collect();
-				let snippet = Snippet::source(source)
+				let snippet = Snippet::source(&**source)
 					.path(path.display().to_string())
 					.annotations(annotations);
 
@@ -199,7 +199,7 @@ impl<'a> Report<'a> {
 			.collect()
 	}
 
-	fn help_groups<'f>(&self, files: &'f Files) -> Vec<annotate_snippets::Group<'f>> {
+	fn help_groups<'f>(&self, files: &'f Files<'f>) -> Vec<annotate_snippets::Group<'f>> {
 		use annotate_snippets::{Group, Level, Patch, Snippet};
 
 		self.helps
@@ -208,7 +208,7 @@ impl<'a> Report<'a> {
 				self.group_patches(help).into_iter().enumerate().map(
 					move |(index, file_patches)| {
 						let (path, source) = files.file(file_patches.fid);
-						let snippet = Snippet::source(source)
+						let snippet = Snippet::source(&**source)
 							.path(path.display().to_string())
 							.patches(file_patches.patches.into_iter().map(|patch| {
 								Patch::new(patch.span.range.into(), patch.replacement)
@@ -256,7 +256,7 @@ impl<'a> Report<'a> {
 		grouped
 	}
 
-	fn group_patches(&self, help: &ReportHelp<'_>) -> Vec<FilePatches> {
+	fn group_patches(&self, help: &ReportHelp) -> Vec<FilePatches> {
 		let mut grouped = Vec::new();
 
 		for patch in &help.patches {
