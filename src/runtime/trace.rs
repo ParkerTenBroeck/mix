@@ -101,7 +101,7 @@ impl ErrorTrace {
 
 fn map_frame_kind(kind: &EvalFrameKind) -> FrameKind {
 	match kind {
-		EvalFrameKind::Function => FrameKind::Fn,
+		EvalFrameKind::Function | EvalFrameKind::FunctionDeepRoot => FrameKind::Fn,
 		EvalFrameKind::ThunkEval(_)
 		| EvalFrameKind::ThunkEvalDeep(_)
 		| EvalFrameKind::ThunkEvalDeepRoot(_) => FrameKind::LazyEval,

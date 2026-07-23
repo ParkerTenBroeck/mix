@@ -1,6 +1,7 @@
 use std::{num::NonZeroUsize, rc::Rc};
 
 use dumpster::Trace;
+use serde::{Deserialize, Serialize};
 
 use super::*;
 
@@ -9,7 +10,9 @@ use crate::{
 	mir,
 };
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Trace, PartialOrd, Ord)]
+#[derive(
+	Clone, Copy, Debug, PartialEq, Eq, Hash, Trace, PartialOrd, Ord, Serialize, Deserialize,
+)]
 pub struct CodePos(usize);
 
 impl CodePos {
@@ -30,7 +33,7 @@ impl std::ops::Add<CodeLocOffset> for CodePos {
 	}
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct CodeLocOffset(pub(super) usize);
 
 impl CodeLocOffset {
@@ -41,7 +44,7 @@ impl CodeLocOffset {
 
 pub type ExprLoc = CodePos;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct StrId(NonZeroUsize);
 
 impl StrId {
@@ -50,7 +53,7 @@ impl StrId {
 	}
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Trace)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Trace, Serialize, Deserialize)]
 pub struct LambdaId(NonZeroUsize);
 
 impl LambdaId {
@@ -59,23 +62,23 @@ impl LambdaId {
 	}
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ExprId(NonZeroUsize);
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Lambda {
 	pub code: CodePos,
 	pub span: Span,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Expr {
 	pub start: CodePos,
 	pub end: CodePos,
 	pub span: Span,
 }
 
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Serialize, Deserialize)]
 pub struct Program {
 	code: Vec<OpCode>,
 	lambdas: Vec<Lambda>,

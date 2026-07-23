@@ -1,54 +1,20 @@
-use super::trace::*;
-use std::{borrow::Cow, collections::HashSet};
+mod frame;
+mod error;
+mod binop;
+mod func;
+mod attr;
+
+pub use frame::*;
+pub use error::*;
+
+use std::{collections::HashSet};
 
 use crate::{
-	bytecode::{CodeLocOffset, CodePos, OpCode},
-	runtime::{
-		LazyValue, Runtime, Value,
-		scope::Scope,
-		thunk::{Thunk, ThunkEvalErr},
-		value::{AttrSet, Lambda, List, StringKind, ValueType},
+	bytecode::{CodeLocOffset, CodePos, OpCode}, runtime::{
+		LazyValue, Runtime, Value, thunk::{Thunk}, trace::ErrorTrace, value::{AttrSet, Lambda, List, StringKind, ValueType},
 	},
 };
 
-#[derive(Debug, Clone)]
-pub enum FrameKind {
-	Function,
-	ThunkEval(Thunk),
-	ThunkEvalDeep(Thunk),
-	ThunkEvalDeepRoot(Thunk),
-}
-
-#[derive(Debug)]
-pub enum EvalError {
-	TypeMismatch { expected: ValueType, got: ValueType },
-	BinOpTypeMismatch { details: Cow<'static, str> },
-	Arithmetic(Cow<'static, str>),
-	MissingAttr(Cow<'static, str>),
-	MissingBinding(Cow<'static, str>),
-	Internal(Cow<'static, str>),
-	ThunkEval(ThunkEvalErr),
-	ByteCode(&'static str),
-}
-
-pub enum PotentialFrame {
-	Realized(Frame),
-	DeepEval(CodePos),
-	PotentialDeep(LazyValue),
-}
-
-#[derive(Clone)]
-pub struct Frame {
-	pub pos: CodePos,
-	pub scope: Scope,
-	pub kind: FrameKind,
-}
-
-impl Frame {
-	pub fn new(pos: CodePos, scope: Scope, kind: FrameKind) -> Self {
-		Self { pos, scope, kind }
-	}
-}
 
 pub struct Evaluator {
 	pub value_stack: Vec<Value>,
@@ -60,212 +26,7 @@ pub struct Evaluator {
 	pub deeply_evaluated: HashSet<usize>,
 }
 
-macro_rules! checked_int_result {
-	($op_name:expr, $display:expr, $value:expr $(,)?) => {
-		$value.map(Value::Int).ok_or_else(|| {
-			EvalError::Arithmetic(format!("{} overflowed for {}", $op_name, $display).into())
-		})
-	};
-}
-
-macro_rules! checked_numeric_op {
-	(
-		$lhs:expr,
-		$rhs:expr,
-		type_error($bad_lhs:ident, $bad_rhs:ident) = $type_error:block,
-		int($int_lhs:ident, $int_rhs:ident) = $int_eval:block,
-		float($float_lhs:ident, $float_rhs:ident) = $float_eval:block $(,)?
-	) => {{
-		match ($lhs, $rhs) {
-			(Value::Int($int_lhs), Value::Int($int_rhs)) => $int_eval,
-			(Value::Float($float_lhs), Value::Int($float_rhs)) => {
-				let $float_rhs = $float_rhs as f64;
-				$float_eval
-			}
-			(Value::Int($float_lhs), Value::Float($float_rhs)) => {
-				let $float_lhs = $float_lhs as f64;
-				$float_eval
-			}
-			(Value::Float($float_lhs), Value::Float($float_rhs)) => $float_eval,
-			($bad_lhs, $bad_rhs) => Err($type_error),
-		}
-	}};
-}
-
-macro_rules! checked_numeric_method {
-	(
-		$name:ident,
-		$this:ident,
-		op_name = $op_name:literal,
-		symbol = $symbol:literal,
-		type_error($bad_lhs:ident, $bad_rhs:ident) = $type_error:block,
-		int = $int_method:ident,
-		float($float_lhs:ident, $float_rhs:ident) = $float_eval:block $(,)?
-	) => {
-		fn $name(&self, lhs: Value, rhs: Value) -> Result<Value, EvalError> {
-			let $this = self;
-			checked_numeric_op!(
-				lhs,
-				rhs,
-				type_error($bad_lhs, $bad_rhs) = $type_error,
-				int(lhs, rhs) = {
-					checked_int_result!(
-						$op_name,
-						format!("{lhs} {} {rhs}", $symbol),
-						lhs.$int_method(rhs),
-					)
-				},
-				float($float_lhs, $float_rhs) = $float_eval,
-			)
-		}
-	};
-}
-
-macro_rules! checked_zero_numeric_method {
-	(
-		$name:ident,
-		$this:ident,
-		op_name = $op_name:literal,
-		symbol = $symbol:literal,
-		type_error($bad_lhs:ident, $bad_rhs:ident) = $type_error:block,
-		int = $int_method:ident,
-		float($float_lhs:ident, $float_rhs:ident) = $float_eval:block,
-		zero = $zero_message:literal $(,)?
-	) => {
-		fn $name(&self, lhs: Value, rhs: Value) -> Result<Value, EvalError> {
-			let $this = self;
-			checked_numeric_op!(
-				lhs,
-				rhs,
-				type_error($bad_lhs, $bad_rhs) = $type_error,
-				int(lhs, rhs) = {
-					if rhs == 0 {
-						return Err(EvalError::Arithmetic(format!($zero_message, lhs).into()));
-					}
-
-					checked_int_result!(
-						$op_name,
-						format!("{lhs} {} {rhs}", $symbol),
-						lhs.$int_method(rhs),
-					)
-				},
-				float($float_lhs, $float_rhs) = {
-					if $float_rhs == 0.0 {
-						return Err(EvalError::Arithmetic(
-							format!($zero_message, $float_lhs).into(),
-						));
-					}
-
-					$float_eval
-				},
-			)
-		}
-	};
-}
-
 impl Evaluator {
-	fn checked_float_result(
-		&self,
-		op_name: &'static str,
-		lhs: f64,
-		rhs: f64,
-		eval: impl FnOnce(f64, f64) -> f64,
-	) -> Result<Value, EvalError> {
-		let value = eval(lhs, rhs);
-
-		if value.is_finite() {
-			Ok(Value::Float(value))
-		} else {
-			Err(EvalError::Arithmetic(
-				format!("{op_name} overflowed or produced a non-finite float for {lhs} and {rhs}")
-					.into(),
-			))
-		}
-	}
-
-	fn checked_add(&self, lhs: Value, rhs: Value) -> Result<Value, EvalError> {
-		match (lhs, rhs) {
-			(Value::String(mut lhs), Value::String(rhs)) => {
-				lhs.get_mut().push_str(&rhs);
-				Ok(Value::String(lhs))
-			}
-			(lhs, rhs) => checked_numeric_op!(
-				lhs,
-				rhs,
-				type_error(lhs, rhs) = {
-					EvalError::BinOpTypeMismatch {
-						details: format!("cannot add {} to {}", rhs.ty(), lhs.ty()).into(),
-					}
-				},
-				int(lhs, rhs) = {
-					checked_int_result!("addition", format!("{lhs} + {rhs}"), lhs.checked_add(rhs),)
-				},
-				float(lhs, rhs) =
-					{ self.checked_float_result("addition", lhs, rhs, |lhs, rhs| lhs + rhs) },
-			),
-		}
-	}
-
-	checked_numeric_method!(
-		checked_sub,
-		this,
-		op_name = "subtraction",
-		symbol = "-",
-		type_error(lhs, rhs) = {
-			EvalError::BinOpTypeMismatch {
-				details: format!("cannot subtract {} from {}", rhs.ty(), lhs.ty()).into(),
-			}
-		},
-		int = checked_sub,
-		float(lhs, rhs) =
-			{ this.checked_float_result("subtraction", lhs, rhs, |lhs, rhs| lhs - rhs) },
-	);
-
-	checked_numeric_method!(
-		checked_mul,
-		this,
-		op_name = "multiplication",
-		symbol = "*",
-		type_error(lhs, rhs) = {
-			EvalError::BinOpTypeMismatch {
-				details: format!("cannot multiply {} by {}", lhs.ty(), rhs.ty()).into(),
-			}
-		},
-		int = checked_mul,
-		float(lhs, rhs) =
-			{ this.checked_float_result("multiplication", lhs, rhs, |lhs, rhs| lhs * rhs) },
-	);
-
-	checked_zero_numeric_method!(
-		checked_div,
-		this,
-		op_name = "division",
-		symbol = "/",
-		type_error(lhs, rhs) = {
-			EvalError::BinOpTypeMismatch {
-				details: format!("cannot divide {} by {}", lhs.ty(), rhs.ty()).into(),
-			}
-		},
-		int = checked_div,
-		float(lhs, rhs) = { this.checked_float_result("division", lhs, rhs, |lhs, rhs| lhs / rhs) },
-		zero = "cannot divide {} by zero",
-	);
-
-	checked_zero_numeric_method!(
-		checked_rem,
-		this,
-		op_name = "remainder",
-		symbol = "%",
-		type_error(lhs, rhs) = {
-			EvalError::BinOpTypeMismatch {
-				details: format!("cannot take {} % {}", lhs.ty(), rhs.ty()).into(),
-			}
-		},
-		int = checked_rem,
-		float(lhs, rhs) =
-			{ this.checked_float_result("remainder", lhs, rhs, |lhs, rhs| lhs % rhs) },
-		zero = "cannot calculate {} % 0",
-	);
 
 	pub fn begin_eval(thunk: Thunk, recursive: bool) -> Result<Evaluator, ErrorTrace> {
 		let (pos, scope, thunk) = match thunk.eval_begin() {
@@ -288,6 +49,57 @@ impl Evaluator {
 			thunk_stack: Default::default(),
 			frame_stack: Default::default(),
 			curr_frame: Frame::new(pos, scope, frame_kind),
+			deeply_evaluated: Default::default(),
+		})
+	}
+
+	pub fn begin_call(
+		runtime: &Runtime,
+		func: Value,
+		arg: LazyValue,
+		recursive: bool,
+	) -> Result<Evaluator, ErrorTrace> {
+		let lambda = match func {
+			Value::Lambda(Lambda::Lambda { scope, lambda }) => {
+				let Some(lambda) = runtime.program.get_lambda(lambda) else {
+					return Err(ErrorTrace {
+						kind: EvalError::Internal(
+							format!("invalid lambda id {} in bytecode", lambda.index()).into(),
+						),
+						stack: Vec::new(),
+					});
+				};
+				let frame_kind = if recursive {
+					FrameKind::FunctionDeepRoot
+				} else {
+					FrameKind::Function
+				};
+				Frame::new(lambda.code, scope.new_level(), frame_kind)
+			}
+			Value::Lambda(Lambda::NativeLambda(_)) => {
+				return Err(ErrorTrace {
+					kind: EvalError::Internal(
+						"cannot begin bytecode evaluation for a native function".into(),
+					),
+					stack: Vec::new(),
+				});
+			}
+			other => {
+				return Err(ErrorTrace {
+					kind: EvalError::TypeMismatch {
+						expected: ValueType::Lambda,
+						got: other.ty(),
+					},
+					stack: Vec::new(),
+				});
+			}
+		};
+
+		Ok(Self {
+			value_stack: Default::default(),
+			thunk_stack: vec![arg],
+			frame_stack: Default::default(),
+			curr_frame: lambda,
 			deeply_evaluated: Default::default(),
 		})
 	}
@@ -393,154 +205,6 @@ impl Evaluator {
 		self.curr_frame.pos = self.curr_frame.pos + off;
 	}
 
-	fn get_attr(
-		&mut self,
-		indexing: &Value,
-		index: &Value,
-	) -> Result<Option<LazyValue>, EvalError> {
-		match index {
-			Value::String(name) => match indexing {
-				Value::AttrSet(attrset) => Ok(attrset.get(name).cloned()),
-				Value::List(list) => {
-					if &**name != "len" {
-						Ok(None)
-					} else {
-						Ok(Some(Value::Int(list.len() as i64).into()))
-					}
-				}
-				value => Err(EvalError::TypeMismatch {
-					expected: ValueType::AttrSet,
-					got: value.ty(),
-				}),
-			},
-			Value::Int(index) => match indexing {
-				Value::List(list) => {
-					Ok(list.get((*index).try_into().unwrap_or(usize::MAX)).cloned())
-				}
-				value => Err(EvalError::TypeMismatch {
-					expected: ValueType::List,
-					got: value.ty(),
-				}),
-			},
-			value => Err(EvalError::TypeMismatch {
-				expected: ValueType::AttrSet,
-				got: value.ty(),
-			}),
-		}
-	}
-
-	fn spill_deep_value(&mut self, value: &Value) -> Result<(), EvalError> {
-		match &value {
-			Value::AttrSet(attrs) => {
-				if !self.deeply_evaluated.insert(attrs.id()) {
-					return Ok(());
-				}
-				for lazy in attrs.values() {
-					self.frame_stack
-						.push(PotentialFrame::PotentialDeep(lazy.clone()));
-				}
-			}
-			Value::List(list) => {
-				if !self.deeply_evaluated.insert(list.id()) {
-					return Ok(());
-				}
-				for lazy in list.iter() {
-					self.frame_stack
-						.push(PotentialFrame::PotentialDeep(lazy.clone()));
-				}
-			}
-			_ => {}
-		}
-		Ok(())
-	}
-
-	fn ret(&mut self, prev: CodePos) -> Result<Option<Value>, EvalError> {
-		let ret = self.pop_value()?;
-
-		// update the thunk if the current frame was evaluating a thunk
-		match &self.curr_frame.kind {
-			FrameKind::ThunkEval(thunk)
-			| FrameKind::ThunkEvalDeep(thunk)
-			| FrameKind::ThunkEvalDeepRoot(thunk) => {
-				thunk.eval_end(ret.clone()).map_err(|()| {
-					EvalError::Internal(
-						"tried to finish a thunk that was not currently evaluating".into(),
-					)
-				})?;
-			}
-			_ => {}
-		}
-
-		// if the current frame is in a deep eval spill inner values onto evaluation stack
-		match &self.curr_frame.kind {
-			FrameKind::ThunkEvalDeep(_) | FrameKind::ThunkEvalDeepRoot(_) => {
-				self.frame_stack.push(PotentialFrame::DeepEval(prev));
-				self.spill_deep_value(&ret)?;
-			}
-			_ => {}
-		}
-
-		// push value onto stack if this frame should produce a return value
-		match &self.curr_frame.kind {
-			FrameKind::Function | FrameKind::ThunkEval(_) | FrameKind::ThunkEvalDeepRoot(_) => {
-				self.push_value(ret)?;
-			}
-			_ => {}
-		}
-
-		while !self.frame_stack.is_empty() {
-			match self.pop_frame()? {
-				PotentialFrame::Realized(frame) => {
-					self.curr_frame = frame;
-					return Ok(None);
-				}
-				PotentialFrame::DeepEval(_) => {}
-				PotentialFrame::PotentialDeep(thunk) => {
-					let thunk = match thunk.try_get_value() {
-						Ok(value) => {
-							self.spill_deep_value(&value)?;
-							continue;
-						}
-						Err(thunk) => thunk,
-					};
-					let (pos, scope) = thunk.eval_begin().map_err(EvalError::ThunkEval)?;
-					self.curr_frame = Frame::new(pos, scope, FrameKind::ThunkEvalDeep(thunk));
-					return Ok(None);
-				}
-			}
-		}
-
-		// return resulting value from evaluator
-		if self.frame_stack.is_empty() {
-			return Ok(Some(self.pop_value()?));
-		}
-		Ok(None)
-	}
-
-	fn apply(&mut self, runtime: &Runtime, arg_pos: CodePos) -> Result<(), EvalError> {
-		let lambda = self.pop_lambda()?;
-
-		match lambda {
-			Lambda::Lambda { scope, lambda } => {
-				let lambda = runtime.program.get_lambda(lambda).ok_or_else(|| {
-					EvalError::Internal(
-						format!("invalid lambda id {} in bytecode", lambda.index()).into(),
-					)
-				})?;
-
-				let thunk = Thunk::uneval_with_scope(arg_pos, self.curr_frame.scope.clone()).into();
-				self.thunk_stack.push(thunk);
-
-				let frame = Frame::new(lambda.code, scope.new_level(), FrameKind::Function);
-				self.begin_frame(frame)?
-			}
-			Lambda::NativeLambda(native_lambda) => {
-				let value = native_lambda.call()?;
-				self.push_value(value)?
-			}
-		};
-		Ok(())
-	}
 
 	pub fn run(&mut self, runtime: &Runtime) -> Result<Value, ErrorTrace> {
 		loop {
@@ -552,44 +216,20 @@ impl Evaluator {
 		}
 	}
 
+	pub fn run_for(&mut self, runtime: &Runtime, steps: usize) -> Result<Option<Value>, ErrorTrace> {
+		for _ in 0..steps {
+			match self.do_step(runtime) {
+				Ok(Some(ret)) => return Ok(Some(ret)),
+				Ok(None) => {},
+				Err(err) => return Err(ErrorTrace::build(runtime, self, err)),
+			}
+		}
+		Ok(None)
+	}
+
 	fn do_step(&mut self, runtime: &Runtime) -> Result<Option<Value>, EvalError> {
 		use crate::bytecode::OpCode;
 
-		macro_rules! binop_cmp {
-			($op: literal, $lhs: ident, $rhs: ident, $expr: expr) => {{
-				let rhs = self.pop_value()?;
-				let lhs = self.pop_value()?;
-				let result = match (lhs, rhs) {
-					(Value::Int($lhs), Value::Int($rhs)) => $expr,
-					(Value::Float($lhs), Value::Int($rhs)) => {
-						let $lhs = $lhs as f64;
-						let $rhs = $rhs as f64;
-						$expr
-					}
-					(Value::Int($lhs), Value::Float($rhs)) => {
-						let $lhs = $lhs as f64;
-						let $rhs = $rhs as f64;
-						$expr
-					}
-					(Value::Float($lhs), Value::Float($rhs)) => $expr,
-					#[allow(clippy::bool_comparison)]
-					(Value::Bool($lhs), Value::Bool($rhs)) => $expr,
-					(Value::String($lhs), Value::String($rhs)) => $expr,
-					(lhs, rhs) => {
-						return Err(EvalError::BinOpTypeMismatch {
-							details: format!(
-								"cannot compare {} and {} with {}",
-								lhs.ty(),
-								rhs.ty(),
-								$op
-							)
-							.into(),
-						});
-					}
-				};
-				self.push_value(result)?;
-			}};
-		}
 		let prev = self.curr_frame.pos;
 		match self.next_op(runtime)? {
 			OpCode::Add => {
@@ -622,12 +262,18 @@ impl Evaluator {
 				let result = self.checked_rem(lhs, rhs)?;
 				self.push_value(result)?;
 			}
-			OpCode::Eq => binop_cmp!("==", lhs, rhs, Value::Bool(lhs == rhs)),
-			OpCode::Ne => binop_cmp!("!=", lhs, rhs, Value::Bool(lhs != rhs)),
-			OpCode::Lt => binop_cmp!("<", lhs, rhs, Value::Bool(lhs < rhs)),
-			OpCode::Lte => binop_cmp!("<=", lhs, rhs, Value::Bool(lhs <= rhs)),
-			OpCode::Gt => binop_cmp!(">", lhs, rhs, Value::Bool(lhs > rhs)),
-			OpCode::Gte => binop_cmp!(">=", lhs, rhs, Value::Bool(lhs >= rhs)),
+			op @ (OpCode::Eq | OpCode::Ne) => {
+				let rhs = self.pop_value()?;
+				let lhs = self.pop_value()?;
+				let result = self.binop_eq(op, lhs, rhs)?;
+				self.push_value(result)?;
+			}
+			op @ (OpCode::Lt | OpCode::Lte | OpCode::Gt | OpCode::Gte) => {
+				let rhs = self.pop_value()?;
+				let lhs = self.pop_value()?;
+				let result = self.binop_cmp(op, lhs, rhs)?;
+				self.push_value(result)?;
+			}
 			OpCode::Not => {
 				let result = match self.pop_value()? {
 					Value::Bool(bool) => Value::Bool(!bool),

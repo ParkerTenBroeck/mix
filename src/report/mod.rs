@@ -5,13 +5,14 @@ pub mod parser;
 use std::borrow::Cow;
 
 use crate::files::{FileId, Files, Span};
+use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Reports {
 	reports: Vec<Report>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Report {
 	pub level: ReportLevel,
 	pub span: Span,
@@ -20,33 +21,33 @@ pub struct Report {
 	pub helps: Vec<ReportHelp>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ReportLevel {
 	Error,
 	Warning,
 	Info,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ReportAnnotation {
 	pub kind: ReportAnnotationKind,
 	pub span: Span,
 	pub label: Option<Cow<'static, str>>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ReportAnnotationKind {
 	Primary,
 	Context,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ReportHelp {
 	pub title: Cow<'static, str>,
 	pub patches: Vec<ReportPatch>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ReportPatch {
 	pub span: Span,
 	pub replacement: Cow<'static, str>,

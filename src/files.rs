@@ -5,12 +5,36 @@ use std::{
 use std::range::Range;
 
 use crate::HashMap;
+use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Span {
+	#[serde(with = "span_range")]
 	pub range: Range<usize>,
 	pub fid: FileId,
 }
+
+// stupid
+mod span_range {
+	use serde::{Deserialize, Deserializer, Serialize, Serializer};
+	use std::range::Range;
+
+	pub fn serialize<S>(range: &Range<usize>, serializer: S) -> Result<S::Ok, S::Error>
+	where
+		S: Serializer,
+	{
+		(range.start, range.end).serialize(serializer)
+	}
+
+	pub fn deserialize<'de, D>(deserializer: D) -> Result<Range<usize>, D::Error>
+	where
+		D: Deserializer<'de>,
+	{
+		let (start, end) = <(usize, usize)>::deserialize(deserializer)?;
+		Ok((start..end).into())
+	}
+}
+
 impl Span {
 	pub fn new(range: Range<usize>, fid: FileId) -> Self {
 		Self { range, fid }
@@ -56,7 +80,7 @@ type LoaderResult = Result<Rc<String>, Error>;
 type Func = dyn FnMut(&Path) -> LoaderResult;
 type Return = Result<(Rc<String>, FileId), Error>;
 
-#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FileId(u32);
 
 #[derive(Clone)]
