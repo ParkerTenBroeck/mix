@@ -2,9 +2,9 @@ use mix::{
 	bytecode::PrettyProgram,
 	files::FileLoader,
 	runtime::{
+		Runtime,
 		pretty::{PrettyLazyValue, PrettyValue},
 		scope::ScopeBuilder,
-		Runtime,
 	},
 };
 

@@ -89,7 +89,7 @@ impl ErrorTrace {
 					kind: FrameKind::LazyEval,
 				}),
 				PotentialFrame::NativeLambda(_) => None,
-				})
+			})
 			.collect();
 
 		stack.push(FrameInfo {

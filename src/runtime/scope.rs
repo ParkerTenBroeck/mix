@@ -1,9 +1,9 @@
-use dumpster::{unsync::Gc, Trace};
+use dumpster::{Trace, unsync::Gc};
 
 use crate::runtime::{
+	LazyValue,
 	native::{Match, NativeLambda},
 	value::{AttrSet, AttrSetInner, Lambda, StringKind, Value},
-	LazyValue,
 };
 
 #[derive(Clone, Default, Debug, Trace)]

@@ -1,9 +1,12 @@
-use std::{ops::Deref};
+use std::ops::Deref;
 
 use dumpster::{Trace, unsync::Gc};
 
 use crate::runtime::{
-	Runtime, eval::{EvalError, Evaluator, NativeCtx}, lazy::LazyValue, value::{List, Value},
+	Runtime,
+	eval::{EvalError, Evaluator, NativeCtx},
+	lazy::LazyValue,
+	value::{List, Value},
 };
 
 #[derive(Clone, Trace)]
@@ -64,7 +67,8 @@ impl NativeLambdaTrait for Match {
 	fn begin(&self, _: &mut Evaluator, _: &mut Runtime, arg: LazyValue) -> NativeLambdaResult {
 		NativeLambdaResult::Future(Box::pin(async {
 			let lazy = NativeCtx::eval_lazy(arg).await.expect_string()?;
-            let regex = regex::Regex::new(&lazy).map_err(|err| EvalError::Internal(err.to_string().into()))?;
+			let regex = regex::Regex::new(&lazy)
+				.map_err(|err| EvalError::Internal(err.to_string().into()))?;
 
 			Ok(Value::Lambda(super::value::Lambda::NativeLambda(
 				NativeLambda::new(Matcher(regex)),
@@ -87,23 +91,18 @@ impl NativeLambdaTrait for Matcher {
 		"matcher"
 	}
 
-	fn begin(
-		&self,
-		_: &mut Evaluator,
-		_: &mut Runtime,
-		arg: LazyValue,
-	) -> NativeLambdaResult {
-        let reg = self.0.clone();
-        NativeLambdaResult::Future(Box::pin(async move{
+	fn begin(&self, _: &mut Evaluator, _: &mut Runtime, arg: LazyValue) -> NativeLambdaResult {
+		let reg = self.0.clone();
+		NativeLambdaResult::Future(Box::pin(async move {
 			let lazy = NativeCtx::eval_lazy(arg).await.expect_string()?;
 
-            let mut list = List::default();
-            if let Some(captures) = reg.captures(&lazy){
-                for capture in captures.iter().flatten(){
-                    list.get_mut().push_back(capture.as_str().to_owned().into());
-                }
-            }
-          
+			let mut list = List::default();
+			if let Some(captures) = reg.captures(&lazy) {
+				for capture in captures.iter().flatten() {
+					list.get_mut().push_back(capture.as_str().to_owned().into());
+				}
+			}
+
 			Ok(Value::List(list))
 		}))
 	}

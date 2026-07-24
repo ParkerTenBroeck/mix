@@ -1,4 +1,7 @@
-use crate::runtime::{native::{NativeLambda, NativeLambdaState}, thunk};
+use crate::runtime::{
+	native::{NativeLambda, NativeLambdaState},
+	thunk,
+};
 
 use super::*;
 
@@ -28,7 +31,11 @@ impl Evaluator {
 		Ok(())
 	}
 
-	pub(super) fn ret(&mut self, runtime: &mut Runtime, prev: CodePos) -> Result<Option<Value>, EvalError> {
+	pub(super) fn ret(
+		&mut self,
+		runtime: &mut Runtime,
+		prev: CodePos,
+	) -> Result<Option<Value>, EvalError> {
 		let ret = self.pop_value()?;
 
 		// update the thunk if the current frame was evaluating a thunk
@@ -89,7 +96,7 @@ impl Evaluator {
 				PotentialFrame::NativeLambda(future) => {
 					let cont = self.pop_value()?;
 					self.continue_native_lambda(runtime, future, Some(cont))?;
-				},
+				}
 			}
 		}
 
@@ -107,8 +114,8 @@ impl Evaluator {
 	) -> Result<(), EvalError> {
 		let lambda = self.pop_lambda()?;
 
-		let arg = Thunk::uneval_with_scope(arg_pos, self.curr_frame.scope.clone()).into();;
-				
+		let arg = Thunk::uneval_with_scope(arg_pos, self.curr_frame.scope.clone()).into();
+
 		match lambda {
 			Lambda::Lambda { scope, lambda } => {
 				let lambda = runtime.program.get_lambda(lambda).ok_or_else(|| {
@@ -129,7 +136,7 @@ impl Evaluator {
 		Ok(())
 	}
 
-		fn apply_native_lambda(
+	fn apply_native_lambda(
 		&mut self,
 		runtime: &mut Runtime,
 		lambda: NativeLambda,
@@ -152,9 +159,7 @@ impl Evaluator {
 		runtime: &mut Runtime,
 		mut future: NativeLambdaState,
 		cont: Option<Value>,
-	) -> Result<(), EvalError>{
-
-
+	) -> Result<(), EvalError> {
 		let data = NativeCtx {
 			evaluator: self,
 			runtime,
@@ -180,55 +185,53 @@ impl Evaluator {
 	}
 }
 
-
 pub fn pending_once() -> PendingOnce {
-    PendingOnce { is_ready: false }
+	PendingOnce { is_ready: false }
 }
 
 pub struct PendingOnce {
-    is_ready: bool,
+	is_ready: bool,
 }
 
 impl Future for PendingOnce {
-    type Output = ();
-    fn poll(mut self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<Self::Output> {
-        if self.is_ready {
-            Poll::Ready(())
-        } else {
-            self.is_ready = true;
-            Poll::Pending
-        }
-    }
+	type Output = ();
+	fn poll(mut self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<Self::Output> {
+		if self.is_ready {
+			Poll::Ready(())
+		} else {
+			self.is_ready = true;
+			Poll::Pending
+		}
+	}
 }
 
 use std::{pin::Pin, task::*};
 static VTABLE: RawWakerVTable = RawWakerVTable::new(|_| panic!(), |_| {}, |_| {}, |_| {});
 
-pub struct NativeCtx<'a>{
+pub struct NativeCtx<'a> {
 	evaluator: &'a mut Evaluator,
 	runtime: &'a mut Runtime,
 
 	to_eval: Option<Thunk>,
-	evaluated: Option<Value>
+	evaluated: Option<Value>,
 }
-
-
 
 impl<'a> NativeCtx<'a> {
 	pub async fn with<T>(func: impl FnOnce(&mut NativeCtx<'_>) -> T) -> T {
 		let (data, vtable) = std::future::poll_fn(|cx: &mut Context<'_>| {
 			Poll::Ready((cx.waker().data(), cx.waker().vtable()))
-		}).await;
+		})
+		.await;
 		assert_eq!(vtable, &VTABLE);
-		
-		func(unsafe{data.cast_mut().cast::<NativeCtx>().as_mut().unwrap()})
+
+		func(unsafe { data.cast_mut().cast::<NativeCtx>().as_mut().unwrap() })
 	}
 
-	pub fn evaluator(&mut self) -> &mut Evaluator{
+	pub fn evaluator(&mut self) -> &mut Evaluator {
 		self.evaluator
 	}
 
-	pub fn runtime(&mut self) -> &mut Runtime{
+	pub fn runtime(&mut self) -> &mut Runtime {
 		self.runtime
 	}
 
@@ -239,15 +242,13 @@ impl<'a> NativeCtx<'a> {
 		}
 	}
 
-	pub async fn eval(thunk: Thunk) -> Value{
-		Self::with(|ctx|{
+	pub async fn eval(thunk: Thunk) -> Value {
+		Self::with(|ctx| {
 			assert!(ctx.to_eval.is_none());
 			ctx.to_eval = Some(thunk);
-		}).await;
+		})
+		.await;
 		pending_once().await;
-		Self::with(|ctx|{
-			ctx.evaluated.take().unwrap()
-		}).await
+		Self::with(|ctx| ctx.evaluated.take().unwrap()).await
 	}
 }
-

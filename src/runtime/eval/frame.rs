@@ -1,5 +1,6 @@
 use crate::{
-	bytecode::CodePos, runtime::{lazy::LazyValue, native::NativeLambdaState, scope::Scope, thunk::Thunk},
+	bytecode::CodePos,
+	runtime::{lazy::LazyValue, native::NativeLambdaState, scope::Scope, thunk::Thunk},
 };
 
 #[derive(Debug, Clone)]
@@ -28,5 +29,5 @@ pub enum PotentialFrame {
 	Realized(Frame),
 	DeepEval(CodePos),
 	PotentialDeep(LazyValue),
-    NativeLambda(NativeLambdaState)
+	NativeLambda(NativeLambdaState),
 }

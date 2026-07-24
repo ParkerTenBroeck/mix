@@ -8,11 +8,11 @@ use std::{
 };
 
 use crate::{
-	runtime::{eval::EvalError, native::NativeLambda},
 	HashMap,
+	runtime::{eval::EvalError, native::NativeLambda},
 };
 
-use dumpster::{unsync::Gc, Trace};
+use dumpster::{Trace, unsync::Gc};
 
 use crate::{
 	bytecode::LambdaId,
