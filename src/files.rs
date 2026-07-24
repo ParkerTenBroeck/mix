@@ -1,5 +1,9 @@
 use std::{
-	borrow::Cow, cell::RefCell, ops::Deref, path::{Path, PathBuf}, rc::Rc,
+	borrow::Cow,
+	cell::RefCell,
+	ops::Deref,
+	path::{Path, PathBuf},
+	rc::Rc,
 };
 
 use std::range::Range;
@@ -90,7 +94,7 @@ pub struct FileLoader {
 
 pub struct Files<'a>(std::cell::Ref<'a, Inner>);
 
-impl<'a> Deref for Files<'a>{
+impl<'a> Deref for Files<'a> {
 	type Target = Inner;
 
 	fn deref(&self) -> &Self::Target {
@@ -111,13 +115,12 @@ pub struct Inner {
 }
 
 impl Inner {
-	pub fn load(&mut self, path: &Path) -> Return{
+	pub fn load(&mut self, path: &Path) -> Return {
 		if !self.loaded.contains_key(path) {
 			let fid = FileId(self.fid_mapping.len() as u32);
 			let result = (self.func)(path);
 			self.fid_mapping.push(path.to_path_buf());
-			self
-				.loaded
+			self.loaded
 				.insert(path.to_path_buf(), result.map(|cow| (cow, fid)));
 		}
 
@@ -151,7 +154,7 @@ impl FileLoader {
 			})),
 		}
 	}
-	
+
 	pub fn load(&self, path: &Path) -> Return {
 		self.inner.borrow_mut().load(path)
 	}
@@ -162,7 +165,7 @@ impl FileLoader {
 		(path.to_owned(), file.clone())
 	}
 
-	pub fn files(&self) -> Files<'_>{
+	pub fn files(&self) -> Files<'_> {
 		Files(self.inner.borrow())
 	}
 

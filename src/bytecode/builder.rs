@@ -77,7 +77,7 @@ impl<'a> ByteCodeBuilder<'a> {
 	pub fn finish(self) -> Vec<OpCode> {
 		self.code
 	}
-	
+
 	pub fn emit(&mut self, op: OpCode) -> &mut Self {
 		self.code.push(op);
 		self

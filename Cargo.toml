@@ -8,6 +8,7 @@ annotate-snippets = "*"
 dumpster = "*"
 rustc-hash = "*"
 serde = { version = "*", features = ["derive", "rc"] }
+regex = "*"
 
 [profile.release]
 debug = true

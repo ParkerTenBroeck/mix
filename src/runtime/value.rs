@@ -8,11 +8,11 @@ use std::{
 };
 
 use crate::{
+	runtime::{eval::EvalError, native::NativeLambda},
 	HashMap,
-	runtime::eval::{EvalError},
 };
 
-use dumpster::{Trace, unsync::Gc};
+use dumpster::{unsync::Gc, Trace};
 
 use crate::{
 	bytecode::LambdaId,
@@ -74,6 +74,69 @@ impl Value {
 			Value::Lambda(_) => ValueType::Lambda,
 		}
 	}
+
+	pub fn expect_bool(self) -> Result<bool, EvalError> {
+		match self {
+			Self::Bool(value) => Ok(value),
+			other => Err(type_mismatch(ValueType::Bool, other)),
+		}
+	}
+
+	pub fn expect_int(self) -> Result<i64, EvalError> {
+		match self {
+			Self::Int(value) => Ok(value),
+			other => Err(type_mismatch(ValueType::Int, other)),
+		}
+	}
+
+	pub fn expect_float(self) -> Result<f64, EvalError> {
+		match self {
+			Self::Float(value) => Ok(value),
+			other => Err(type_mismatch(ValueType::Float, other)),
+		}
+	}
+
+	pub fn expect_string(self) -> Result<StringKind, EvalError> {
+		match self {
+			Self::String(value) => Ok(value),
+			other => Err(type_mismatch(ValueType::String, other)),
+		}
+	}
+
+	pub fn expect_path(self) -> Result<PathBuf, EvalError> {
+		match self {
+			Self::Path(value) => Ok(value),
+			other => Err(type_mismatch(ValueType::Path, other)),
+		}
+	}
+
+	pub fn expect_list(self) -> Result<List, EvalError> {
+		match self {
+			Self::List(value) => Ok(value),
+			other => Err(type_mismatch(ValueType::List, other)),
+		}
+	}
+
+	pub fn expect_attrset(self) -> Result<AttrSet, EvalError> {
+		match self {
+			Self::AttrSet(value) => Ok(value),
+			other => Err(type_mismatch(ValueType::AttrSet, other)),
+		}
+	}
+
+	pub fn expect_lambda(self) -> Result<Lambda, EvalError> {
+		match self {
+			Self::Lambda(value) => Ok(value),
+			other => Err(type_mismatch(ValueType::Lambda, other)),
+		}
+	}
+}
+
+fn type_mismatch(expected: ValueType, value: Value) -> EvalError {
+	EvalError::TypeMismatch {
+		expected,
+		got: value.ty(),
+	}
 }
 
 impl From<i64> for Value {
@@ -97,40 +160,6 @@ impl From<bool> for Value {
 impl From<String> for Value {
 	fn from(value: String) -> Self {
 		Self::String(StringKind::String(value))
-	}
-}
-
-#[derive(Clone, Trace)]
-pub struct NativeLambda {
-	inner: Gc<Box<dyn NativeLambdaTrait>>, // silly rust
-}
-
-impl Deref for NativeLambda {
-	type Target = dyn NativeLambdaTrait;
-
-	fn deref(&self) -> &Self::Target {
-		&**self.inner
-	}
-}
-
-impl NativeLambda {
-	pub fn new<T: NativeLambdaTrait>(lambda: T) -> Self {
-		Self {
-			inner: Gc::new(Box::new(lambda)),
-		}
-	}
-}
-
-pub trait NativeLambdaTrait: Trace + Debug + 'static {
-	fn identifier(&self) -> &str;
-	fn call<'a, 'b>(&self) -> Result<Value, EvalError>;
-}
-
-impl std::fmt::Debug for NativeLambda {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		f.debug_struct("NativeLambda")
-			.field("identifer", &self.inner.identifier())
-			.finish()
 	}
 }
 

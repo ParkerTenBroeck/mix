@@ -1,5 +1,6 @@
 pub mod eval;
 pub mod lazy;
+pub mod native;
 pub mod pretty;
 pub mod scope;
 pub mod string;
@@ -50,14 +51,14 @@ impl Runtime {
 	}
 
 	pub fn eval(&mut self, lazy: LazyValue) -> Result<Value, ErrorTrace> {
-		match lazy.try_get_value(){
+		match lazy.try_get_value() {
 			Ok(value) => Ok(value),
 			Err(thunk) => Evaluator::begin_eval(thunk, false)?.run(self),
 		}
 	}
 
 	pub fn deep_eval(&mut self, lazy: LazyValue) -> Result<Value, ErrorTrace> {
-		match lazy.try_get_value(){
+		match lazy.try_get_value() {
 			Ok(value) => Ok(value),
 			Err(thunk) => Evaluator::begin_eval(thunk, true)?.run(self),
 		}

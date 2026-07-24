@@ -1,7 +1,7 @@
 use super::*;
 
-impl Evaluator{
-    pub(super) fn get_attr(
+impl Evaluator {
+	pub(super) fn get_attr(
 		&mut self,
 		indexing: &Value,
 		index: &Value,

@@ -1,5 +1,11 @@
 use mix::{
-	bytecode::PrettyProgram, files::FileLoader, runtime::{Runtime, pretty::{PrettyLazyValue, PrettyValue}, scope::ScopeBuilder},
+	bytecode::PrettyProgram,
+	files::FileLoader,
+	runtime::{
+		pretty::{PrettyLazyValue, PrettyValue},
+		scope::ScopeBuilder,
+		Runtime,
+	},
 };
 
 fn run() {
@@ -9,6 +15,7 @@ fn run() {
 	});
 
 	let scope = ScopeBuilder::new()
+		.with_builtins()
 		// .with("false", false)
 		// .with("true", true)
 		.bottom();
@@ -24,7 +31,7 @@ fn run() {
 		}
 	};
 	println!("{}", PrettyProgram::new(&runtime.program, &loader));
-	
+
 	println!("{}", PrettyLazyValue::new(&runtime, &res));
 	let res = runtime.deep_eval(res);
 	match res {

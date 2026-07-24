@@ -1,5 +1,6 @@
 use crate::{
-	files::{Files, Span}, runtime::{
+	files::{Files, Span},
+	runtime::{
 		Runtime,
 		eval::{EvalError, Evaluator, FrameKind as EvalFrameKind, PotentialFrame},
 	},
@@ -87,7 +88,8 @@ impl ErrorTrace {
 					span: runtime.program.find_pos(*code_pos),
 					kind: FrameKind::LazyEval,
 				}),
-			})
+				PotentialFrame::NativeLambda(_) => None,
+				})
 			.collect();
 
 		stack.push(FrameInfo {

@@ -150,7 +150,6 @@ impl Reports {
 impl Report {
 	pub fn render(&self, files: &Files<'_>) -> String {
 		use annotate_snippets::*;
-		
 
 		let renderer = Renderer::styled().decor_style(renderer::DecorStyle::Unicode);
 		let annotation_groups = self.annotation_groups(files);

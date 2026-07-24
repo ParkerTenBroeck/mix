@@ -1,8 +1,9 @@
-use dumpster::{Trace, unsync::Gc};
+use dumpster::{unsync::Gc, Trace};
 
 use crate::runtime::{
+	native::{Match, NativeLambda},
+	value::{AttrSet, AttrSetInner, Lambda, StringKind, Value},
 	LazyValue,
-	value::{AttrSetInner, StringKind},
 };
 
 #[derive(Clone, Default, Debug, Trace)]
@@ -53,6 +54,21 @@ pub struct ScopeBuilder {
 impl ScopeBuilder {
 	pub fn new() -> Self {
 		Default::default()
+	}
+
+	pub fn with_builtins(mut self) -> Self {
+		let mut builtins = AttrSet::new();
+		builtins.get_mut().insert(
+			StringKind::String("matcher".into()),
+			Value::Lambda(Lambda::NativeLambda(NativeLambda::new(Match))).into(),
+		);
+
+		self.scope.insert(
+			StringKind::String("builtins".into()),
+			Value::AttrSet(builtins).into(),
+		);
+
+		self
 	}
 
 	pub fn with(mut self, key: impl Into<StringKind>, value: impl Into<LazyValue>) -> Self {

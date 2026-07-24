@@ -1,10 +1,24 @@
 use std::{borrow::Borrow, rc::Rc};
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone)]
 pub enum StringKind {
 	String(String),
 	Interned(Rc<String>),
 }
+
+impl std::fmt::Debug for StringKind {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		(**self).fmt(f)
+	}
+}
+
+impl PartialEq for StringKind {
+	fn eq(&self, other: &Self) -> bool {
+		**self == **other
+	}
+}
+
+impl Eq for StringKind {}
 
 unsafe impl<__V: ::dumpster::Visitor> ::dumpster::TraceWith<__V> for StringKind {
 	#[inline]

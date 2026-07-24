@@ -142,10 +142,10 @@ impl Evaluator {
 			_ => {
 				return Err(EvalError::ByteCode(
 					"non-equality opcode passed to binop_eq",
-				))
+				));
 			}
 		};
-        // todo deep equality..
+		// todo deep equality..
 		let equal = match (lhs, rhs) {
 			(Value::Int(lhs), Value::Int(rhs)) => lhs == rhs,
 			(Value::Float(lhs), Value::Int(rhs)) => lhs == rhs as f64,

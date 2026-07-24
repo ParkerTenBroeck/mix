@@ -1,7 +1,8 @@
 use std::fmt;
 
 use crate::{
-	bytecode::{CodeLocOffset, CodePos, OpCode, Program}, files::{FileLoader, Files, Span},
+	bytecode::{CodeLocOffset, CodePos, OpCode, Program},
+	files::{FileLoader, Files, Span},
 };
 
 pub fn render_program(program: &Program, files: &Files) -> String {
@@ -33,7 +34,7 @@ pub fn render_program(program: &Program, files: &Files) -> String {
 	let mut expr_starts: Vec<_> = program.expressions().iter().collect();
 	expr_starts.sort_by_key(|expr| expr.start.index());
 	let mut next_expr = 0usize;
-	let mut flow = FlowPrinter::default();
+	let flow = FlowPrinter::new(program.ops());
 
 	for (idx, op) in program.ops().iter().copied().enumerate() {
 		let pos = CodePos::from_index(idx);
@@ -63,7 +64,6 @@ pub fn render_program(program: &Program, files: &Files) -> String {
 			format_op(program, pos, op),
 			format_span(files, span)
 		));
-		flow.observe(pos, op);
 	}
 
 	out
@@ -176,53 +176,77 @@ fn fmt_pos(pos: CodePos) -> String {
 	format!("{:04}", pos.index())
 }
 
-#[derive(Default)]
 struct FlowPrinter {
-	regions: Vec<FlowRegion>,
+	edges: Vec<FlowEdge>,
+	lanes: usize,
 }
 
-struct FlowRegion {
-	end: usize,
-	kind: FlowKind,
-}
-
-#[derive(Clone, Copy)]
-enum FlowKind {
-	Branch,
-	Else,
+struct FlowEdge {
+	source: usize,
+	target: usize,
+	lane: usize,
 }
 
 impl FlowPrinter {
-	fn guide_for(&mut self, pos: CodePos) -> String {
-		let idx = pos.index();
-		self.regions.retain(|region| region.end > idx);
+	fn new(ops: &[OpCode]) -> Self {
+		let mut edges = Vec::new();
+		let mut lane_ends = Vec::new();
 
+		for (source, op) in ops.iter().copied().enumerate() {
+			let Some(offset) = branch_offset(op) else {
+				continue;
+			};
+			let target = source + 1 + offset.offset();
+			let lane = lane_ends
+				.iter()
+				.position(|end| *end < source)
+				.unwrap_or_else(|| {
+					lane_ends.push(0);
+					lane_ends.len() - 1
+				});
+			lane_ends[lane] = target;
+			edges.push(FlowEdge {
+				source,
+				target,
+				lane,
+			});
+		}
+
+		Self {
+			edges,
+			lanes: lane_ends.len(),
+		}
+	}
+
+	fn guide_for(&self, pos: CodePos) -> String {
+		let idx = pos.index();
 		let mut guide = String::new();
-		for region in &self.regions {
-			match region.kind {
-				FlowKind::Branch => guide.push_str("│  "),
-				FlowKind::Else => guide.push_str("   "),
+
+		for lane in 0..self.lanes {
+			let edge = self
+				.edges
+				.iter()
+				.find(|edge| edge.lane == lane && edge.source <= idx && idx <= edge.target);
+			match edge {
+				Some(edge) if idx == edge.source => guide.push_str("┌─ "),
+				Some(edge) if idx == edge.target => guide.push_str("└▶ "),
+				Some(_) => guide.push_str("│  "),
+				None => guide.push_str("   "),
 			}
 		}
+
 		guide
 	}
+}
 
-	fn observe(&mut self, pos: CodePos, op: OpCode) {
-		let start = pos.index() + 1;
-		match op {
-			OpCode::If(offset) => self.push_region(start, offset, FlowKind::Branch),
-			OpCode::And(offset) | OpCode::Or(offset) | OpCode::LogImp(offset) => {
-				self.push_region(start, offset, FlowKind::Branch)
-			}
-			OpCode::Branch(offset) => self.push_region(start, offset, FlowKind::Else),
-			_ => {}
-		}
-	}
-
-	fn push_region(&mut self, start: usize, offset: CodeLocOffset, kind: FlowKind) {
-		let end = start + offset.offset();
-		if end > start {
-			self.regions.push(FlowRegion { end, kind });
-		}
+fn branch_offset(op: OpCode) -> Option<CodeLocOffset> {
+	match op {
+		OpCode::And(offset)
+		| OpCode::Or(offset)
+		| OpCode::LogImp(offset)
+		| OpCode::If(offset)
+		| OpCode::GetAttrOr(offset)
+		| OpCode::Branch(offset) => Some(offset),
+		_ => None,
 	}
 }

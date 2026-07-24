@@ -1,20 +1,25 @@
-mod frame;
-mod error;
-mod binop;
-mod func;
 mod attr;
+mod binop;
+mod error;
+mod frame;
+mod func;
 
-pub use frame::*;
 pub use error::*;
+pub use frame::*;
 
-use std::{collections::HashSet};
+pub use func::*;
+
+use std::collections::HashSet;
 
 use crate::{
-	bytecode::{CodeLocOffset, CodePos, OpCode}, runtime::{
-		LazyValue, Runtime, Value, thunk::{Thunk}, trace::ErrorTrace, value::{AttrSet, Lambda, List, StringKind, ValueType},
+	bytecode::{CodeLocOffset, CodePos, OpCode},
+	runtime::{
+		LazyValue, Runtime, Value,
+		thunk::Thunk,
+		trace::ErrorTrace,
+		value::{AttrSet, Lambda, List, StringKind, ValueType},
 	},
 };
-
 
 pub struct Evaluator {
 	pub value_stack: Vec<Value>,
@@ -27,7 +32,6 @@ pub struct Evaluator {
 }
 
 impl Evaluator {
-
 	pub fn begin_eval(thunk: Thunk, recursive: bool) -> Result<Evaluator, ErrorTrace> {
 		let (pos, scope, thunk) = match thunk.eval_begin() {
 			Ok((pos, scope)) => (pos, scope, thunk),
@@ -116,58 +120,23 @@ impl Evaluator {
 	}
 
 	fn pop_bool(&mut self) -> Result<bool, EvalError> {
-		let value = self.pop_value()?;
-		match value {
-			Value::Bool(value) => Ok(value),
-			other => Err(EvalError::TypeMismatch {
-				expected: ValueType::Bool,
-				got: other.ty(),
-			}),
-		}
+		self.pop_value()?.expect_bool()
 	}
 
 	fn pop_string(&mut self) -> Result<StringKind, EvalError> {
-		let value = self.pop_value()?;
-		match value {
-			Value::String(value) => Ok(value),
-			other => Err(EvalError::TypeMismatch {
-				expected: ValueType::String,
-				got: other.ty(),
-			}),
-		}
+		self.pop_value()?.expect_string()
 	}
 
 	fn pop_list(&mut self) -> Result<List, EvalError> {
-		let value = self.pop_value()?;
-		match value {
-			Value::List(value) => Ok(value),
-			other => Err(EvalError::TypeMismatch {
-				expected: ValueType::List,
-				got: other.ty(),
-			}),
-		}
+		self.pop_value()?.expect_list()
 	}
 
 	fn pop_attrset(&mut self) -> Result<AttrSet, EvalError> {
-		let value = self.pop_value()?;
-		match value {
-			Value::AttrSet(value) => Ok(value),
-			other => Err(EvalError::TypeMismatch {
-				expected: ValueType::AttrSet,
-				got: other.ty(),
-			}),
-		}
+		self.pop_value()?.expect_attrset()
 	}
 
 	fn pop_lambda(&mut self) -> Result<Lambda, EvalError> {
-		let value = self.pop_value()?;
-		match value {
-			Value::Lambda(value) => Ok(value),
-			other => Err(EvalError::TypeMismatch {
-				expected: ValueType::Lambda,
-				got: other.ty(),
-			}),
-		}
+		self.pop_value()?.expect_lambda()
 	}
 
 	fn push_thunk(&mut self, value: LazyValue) -> Result<(), EvalError> {
@@ -205,29 +174,32 @@ impl Evaluator {
 		self.curr_frame.pos = self.curr_frame.pos + off;
 	}
 
-
-	pub fn run(&mut self, runtime: &Runtime) -> Result<Value, ErrorTrace> {
+	pub fn run(&mut self, runtime: &mut Runtime) -> Result<Value, ErrorTrace> {
 		loop {
-			match self.do_step(runtime){
+			match self.do_step(runtime) {
 				Ok(Some(ret)) => return Ok(ret),
-				Ok(None) => {},
+				Ok(None) => {}
 				Err(err) => return Err(ErrorTrace::build(runtime, self, err)),
 			}
 		}
 	}
 
-	pub fn run_for(&mut self, runtime: &Runtime, steps: usize) -> Result<Option<Value>, ErrorTrace> {
+	pub fn run_for(
+		&mut self,
+		runtime: &mut Runtime,
+		steps: usize,
+	) -> Result<Option<Value>, ErrorTrace> {
 		for _ in 0..steps {
 			match self.do_step(runtime) {
 				Ok(Some(ret)) => return Ok(Some(ret)),
-				Ok(None) => {},
+				Ok(None) => {}
 				Err(err) => return Err(ErrorTrace::build(runtime, self, err)),
 			}
 		}
 		Ok(None)
 	}
 
-	fn do_step(&mut self, runtime: &Runtime) -> Result<Option<Value>, EvalError> {
+	fn do_step(&mut self, runtime: &mut Runtime) -> Result<Option<Value>, EvalError> {
 		use crate::bytecode::OpCode;
 
 		let prev = self.curr_frame.pos;
@@ -463,7 +435,7 @@ impl Evaluator {
 			}
 
 			OpCode::Ret => {
-				if let Some(value) = self.ret(prev)? {
+				if let Some(value) = self.ret(runtime, prev)? {
 					return Ok(Some(value));
 				}
 			}
