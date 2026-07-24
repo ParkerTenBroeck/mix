@@ -160,13 +160,14 @@ impl Evaluator {
 		mut future: NativeLambdaState,
 		cont: Option<Value>,
 	) -> Result<(), EvalError> {
-		let data = NativeCtx {
+		let mut data = NativeCtx {
 			evaluator: self,
 			runtime,
 			to_eval: None,
 			evaluated: cont,
 		};
-		let waker = unsafe { Waker::new((&raw const data).cast(), &VTABLE) };
+		// MUST borrow data as mut
+		let waker = unsafe { Waker::new((&raw mut data).cast(), &VTABLE) };
 		let mut ctx = Context::from_waker(&waker);
 
 		match future.as_mut().poll(&mut ctx) {
