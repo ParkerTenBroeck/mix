@@ -14,7 +14,13 @@ use crate::{
 	mir::lowerer::MirLowerer,
 	parse::Parser,
 	report::Reports,
-	runtime::{eval::Evaluator, lazy::LazyValue, scope::Scope, trace::ErrorTrace, value::Value},
+	runtime::{
+		eval::{Evaluator, Fule},
+		lazy::LazyValue,
+		scope::Scope,
+		trace::ErrorTrace,
+		value::Value,
+	},
 };
 
 #[derive(Debug)]
@@ -29,7 +35,7 @@ impl Runtime {
 		Self {
 			loader,
 			default_scope: top_scope,
-			program: Default::default(),
+			program: Program::new(),
 		}
 	}
 
@@ -53,14 +59,27 @@ impl Runtime {
 	pub fn eval(&mut self, lazy: LazyValue) -> Result<Value, ErrorTrace> {
 		match lazy.try_get_value() {
 			Ok(value) => Ok(value),
-			Err(thunk) => Evaluator::begin_eval(thunk, false)?.run(self),
+			Err(thunk) => {
+				let mut eval = Evaluator::begin_eval(thunk, false)?;
+				let res = eval.run(self, Fule::unlimited());
+				Ok(res
+					.map_err(|err| ErrorTrace::build(self, &eval, err))?
+					.unwrap())
+			}
 		}
 	}
 
 	pub fn deep_eval(&mut self, lazy: LazyValue) -> Result<Value, ErrorTrace> {
 		match lazy.try_get_value() {
 			Ok(value) => Ok(value),
-			Err(thunk) => Evaluator::begin_eval(thunk, true)?.run(self),
+			Err(thunk) => {
+				let mut eval = Evaluator::begin_eval(thunk, true)?;
+				
+				let res = eval.run(self, Fule::unlimited());
+				Ok(res
+					.map_err(|err| ErrorTrace::build(self, &eval, err))?
+					.unwrap())
+			}
 		}
 	}
 }

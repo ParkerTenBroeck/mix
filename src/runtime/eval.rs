@@ -3,16 +3,17 @@ mod binop;
 mod error;
 mod frame;
 mod func;
+mod native;
 
 pub use error::*;
 pub use frame::*;
 
-pub use func::*;
+pub use native::*;
 
-use std::collections::HashSet;
+use std::{collections::HashSet, num::NonZeroUsize};
 
 use crate::{
-	bytecode::{CodeLocOffset, CodePos, OpCode},
+	bytecode::{CodePos, OpCode},
 	runtime::{
 		LazyValue, Runtime, Value,
 		thunk::Thunk,
@@ -21,14 +22,36 @@ use crate::{
 	},
 };
 
+#[derive(Default)]
 pub struct Evaluator {
-	pub value_stack: Vec<Value>,
-	pub thunk_stack: Vec<LazyValue>,
+	pub local: LocalEvaluator,
+	pub frames: Vec<Frame>,
+}
 
-	pub frame_stack: Vec<PotentialFrame>,
-	pub curr_frame: Frame,
+pub struct Fule(Option<NonZeroUsize>);
 
-	pub deeply_evaluated: HashSet<usize>,
+impl Fule {
+	pub fn unlimited() -> Self {
+		Self(None)
+	}
+
+	pub fn limited(amount: usize) -> Self {
+		Self(Some(NonZeroUsize::new(amount.saturating_add(1))).unwrap())
+	}
+
+	pub fn fule(&mut self) -> bool {
+		match self.0 {
+			None => true,
+			Some(ammount) => {
+				if let Some(fule) = NonZeroUsize::new(ammount.get() - 1) {
+					self.0 = Some(fule);
+					true
+				} else {
+					false
+				}
+			}
+		}
+	}
 }
 
 impl Evaluator {
@@ -42,75 +65,91 @@ impl Evaluator {
 				});
 			}
 		};
-		let frame_kind = if recursive {
-			FrameKind::ThunkEvalDeepRoot(thunk)
-		} else {
-			FrameKind::ThunkEval(thunk)
+		let frame = Frame {
+			kind: FrameKind::Thunk {
+				eval: EvalFrame { pos, scope },
+				thunk,
+			},
 		};
 
 		Ok(Self {
-			value_stack: Default::default(),
-			thunk_stack: Default::default(),
-			frame_stack: Default::default(),
-			curr_frame: Frame::new(pos, scope, frame_kind),
-			deeply_evaluated: Default::default(),
+			local: Default::default(),
+			frames: vec![frame],
+			// frame: Frame::new(pos, scope, meta),
 		})
 	}
 
-	pub fn begin_call(
-		runtime: &Runtime,
-		func: Value,
-		arg: LazyValue,
-		recursive: bool,
-	) -> Result<Evaluator, ErrorTrace> {
-		let lambda = match func {
-			Value::Lambda(Lambda::Lambda { scope, lambda }) => {
-				let Some(lambda) = runtime.program.get_lambda(lambda) else {
-					return Err(ErrorTrace {
-						kind: EvalError::Internal(
-							format!("invalid lambda id {} in bytecode", lambda.index()).into(),
-						),
-						stack: Vec::new(),
-					});
-				};
-				let frame_kind = if recursive {
-					FrameKind::FunctionDeepRoot
-				} else {
-					FrameKind::Function
-				};
-				Frame::new(lambda.code, scope.new_level(), frame_kind)
-			}
-			Value::Lambda(Lambda::NativeLambda(_)) => {
-				return Err(ErrorTrace {
-					kind: EvalError::Internal(
-						"cannot begin bytecode evaluation for a native function".into(),
-					),
-					stack: Vec::new(),
-				});
-			}
-			other => {
-				return Err(ErrorTrace {
-					kind: EvalError::TypeMismatch {
-						expected: ValueType::Lambda,
-						got: other.ty(),
-					},
-					stack: Vec::new(),
-				});
-			}
-		};
-
-		Ok(Self {
-			value_stack: Default::default(),
-			thunk_stack: vec![arg],
-			frame_stack: Default::default(),
-			curr_frame: lambda,
-			deeply_evaluated: Default::default(),
-		})
+	fn begin_frame(&mut self, frame: Frame) -> Result<(), EvalError> {
+		self.frames.push(frame);
+		Ok(())
 	}
 
+	fn pop_frame(&mut self) -> Result<Frame, EvalError> {
+		self.frames.pop().ok_or(EvalError::ByteCode("call stack"))
+	}
+
+	pub fn run(
+		&mut self,
+		runtime: &mut Runtime,
+		mut fule: Fule,
+	) -> Result<Option<Value>, EvalError> {
+		loop {
+			let Some(frame) = self.frames.last_mut() else {
+				todo!()
+			};
+
+			let res = match &mut frame.kind {
+				FrameKind::Function { eval } => {
+					self.local.run_bytecode(runtime, eval, &mut fule)?
+				}
+				FrameKind::Thunk { eval, thunk } => {
+					let res = self.local.run_bytecode(runtime, eval, &mut fule)?;
+					if matches!(res, ByteCodeStep::Ret) {
+						thunk.eval_end(self.local.peek_value()?, false).unwrap();
+					}
+					res
+				}
+				FrameKind::Native { state, name } => {
+					self.local.poll_native_lambda(runtime, &mut fule, state.as_mut())?
+				}
+				FrameKind::Deep { pos, remaining } => {
+					todo!()
+				}
+			};
+
+			match res {
+				// might want to error on this
+				ByteCodeStep::Pending if !fule.fule() => return Ok(None),
+				ByteCodeStep::Pending => {}
+				ByteCodeStep::Ret if self.frames.len() == 1 => {
+					return Ok(Some(self.local.pop_value()?));
+				}
+				ByteCodeStep::Ret => _ = self.pop_frame()?,
+				ByteCodeStep::BeginFrame(frame) => {
+					self.begin_frame(frame)?;
+				}
+			}
+		}
+	}
+}
+
+#[derive(Default)]
+pub struct LocalEvaluator {
+	pub value_stack: Vec<Value>,
+	pub thunk_stack: Vec<LazyValue>,
+}
+
+impl LocalEvaluator {
 	fn push_value(&mut self, value: Value) -> Result<(), EvalError> {
 		self.value_stack.push(value);
 		Ok(())
+	}
+
+	fn peek_value(&mut self) -> Result<Value, EvalError> {
+		self.value_stack
+			.last()
+			.cloned()
+			.ok_or(EvalError::ByteCode("value stack"))
 	}
 
 	fn pop_value(&mut self) -> Result<Value, EvalError> {
@@ -149,101 +188,82 @@ impl Evaluator {
 			.pop()
 			.ok_or(EvalError::ByteCode("thunk stack"))
 	}
+}
 
-	fn begin_frame(&mut self, mut frame: Frame) -> Result<(), EvalError> {
-		std::mem::swap(&mut self.curr_frame, &mut frame);
-		self.frame_stack.push(PotentialFrame::Realized(frame));
-		Ok(())
-	}
+enum ByteCodeStep {
+	Pending,
+	Ret,
+	BeginFrame(Frame),
+}
 
-	fn pop_frame(&mut self) -> Result<PotentialFrame, EvalError> {
-		self.frame_stack
-			.pop()
-			.ok_or(EvalError::ByteCode("call stack"))
-	}
-
-	fn next_op(&mut self, runtime: &Runtime) -> Result<OpCode, EvalError> {
-		let Some((op, pos)) = runtime.program.get(self.curr_frame.pos) else {
-			return Err(EvalError::ByteCode("instruction pointer overran bytecode"));
-		};
-		self.curr_frame.pos = pos;
-		Ok(op)
-	}
-
-	fn branch(&mut self, off: CodeLocOffset) {
-		self.curr_frame.pos = self.curr_frame.pos + off;
-	}
-
-	pub fn run(&mut self, runtime: &mut Runtime) -> Result<Value, ErrorTrace> {
-		loop {
-			match self.do_step(runtime) {
-				Ok(Some(ret)) => return Ok(ret),
-				Ok(None) => {}
-				Err(err) => return Err(ErrorTrace::build(runtime, self, err)),
-			}
-		}
-	}
-
-	pub fn run_for(
+impl LocalEvaluator {
+	fn run_bytecode(
 		&mut self,
 		runtime: &mut Runtime,
-		steps: usize,
-	) -> Result<Option<Value>, ErrorTrace> {
-		for _ in 0..steps {
-			match self.do_step(runtime) {
-				Ok(Some(ret)) => return Ok(Some(ret)),
-				Ok(None) => {}
-				Err(err) => return Err(ErrorTrace::build(runtime, self, err)),
+		frame: &mut EvalFrame,
+		fule: &mut Fule,
+	) -> Result<ByteCodeStep, EvalError> {
+		while fule.fule() {
+			let res = self.step_bytecode(runtime, frame)?;
+			if !matches!(res, ByteCodeStep::Pending) {
+				return Ok(res);
 			}
 		}
-		Ok(None)
+		Ok(ByteCodeStep::Pending)
 	}
 
-	fn do_step(&mut self, runtime: &mut Runtime) -> Result<Option<Value>, EvalError> {
+	fn step_bytecode(
+		&mut self,
+		runtime: &mut Runtime,
+		frame: &mut EvalFrame,
+	) -> Result<ByteCodeStep, EvalError> {
 		use crate::bytecode::OpCode;
 
-		let prev = self.curr_frame.pos;
-		match self.next_op(runtime)? {
+		let Some((op, mut next_pos)) = runtime.program.get(frame.pos) else {
+			return Err(EvalError::ByteCode("instruction pointer overran bytecode")).into();
+		};
+
+		match op {
 			OpCode::Add => {
 				let rhs = self.pop_value()?;
 				let lhs = self.pop_value()?;
-				let result = self.checked_add(lhs, rhs)?;
+				let result = Self::checked_add(lhs, rhs)?;
 				self.push_value(result)?;
 			}
 			OpCode::Sub => {
 				let rhs = self.pop_value()?;
 				let lhs = self.pop_value()?;
-				let result = self.checked_sub(lhs, rhs)?;
+				let result = Self::checked_sub(lhs, rhs)?;
 				self.push_value(result)?;
 			}
 			OpCode::Mul => {
 				let rhs = self.pop_value()?;
 				let lhs = self.pop_value()?;
-				let result = self.checked_mul(lhs, rhs)?;
+				let result = Self::checked_mul(lhs, rhs)?;
 				self.push_value(result)?;
 			}
 			OpCode::Div => {
 				let rhs = self.pop_value()?;
 				let lhs = self.pop_value()?;
-				let result = self.checked_div(lhs, rhs)?;
+				let result = Self::checked_div(lhs, rhs)?;
 				self.push_value(result)?;
 			}
 			OpCode::Rem => {
 				let rhs = self.pop_value()?;
 				let lhs = self.pop_value()?;
-				let result = self.checked_rem(lhs, rhs)?;
+				let result = Self::checked_rem(lhs, rhs)?;
 				self.push_value(result)?;
 			}
 			op @ (OpCode::Eq | OpCode::Ne) => {
 				let rhs = self.pop_value()?;
 				let lhs = self.pop_value()?;
-				let result = self.binop_eq(op, lhs, rhs)?;
+				let result = Self::binop_eq(op, lhs, rhs)?;
 				self.push_value(result)?;
 			}
 			op @ (OpCode::Lt | OpCode::Lte | OpCode::Gt | OpCode::Gte) => {
 				let rhs = self.pop_value()?;
 				let lhs = self.pop_value()?;
-				let result = self.binop_cmp(op, lhs, rhs)?;
+				let result = Self::binop_cmp(op, lhs, rhs)?;
 				self.push_value(result)?;
 			}
 			OpCode::Not => {
@@ -281,7 +301,7 @@ impl Evaluator {
 					_ => None,
 				};
 				if let Some(result) = result {
-					self.branch(rhs);
+					next_pos = next_pos + rhs;
 					self.push_value(Value::Bool(result))?;
 				}
 			}
@@ -289,10 +309,10 @@ impl Evaluator {
 			OpCode::If(else_off) => {
 				let cond = self.pop_bool()?;
 				if !cond {
-					self.branch(else_off);
+					next_pos = next_pos + else_off;
 				}
 			}
-			OpCode::Branch(offset) => self.branch(offset),
+			OpCode::Branch(offset) => next_pos = next_pos + offset,
 
 			OpCode::CreateAttrSet => {
 				self.value_stack.push(Value::AttrSet(AttrSet::default()));
@@ -309,13 +329,13 @@ impl Evaluator {
 			op @ (OpCode::FinalizeAttrSetRec | OpCode::FinalizeAttrSet) => {
 				let attrset = self.pop_attrset()?;
 				let scope = if op == OpCode::FinalizeAttrSetRec {
-					let mut scope = self.curr_frame.scope.clone();
+					let mut scope = frame.scope.clone();
 					for (name, value) in attrset.iter() {
 						scope.bind(name.clone(), value.clone());
 					}
 					scope
 				} else {
-					self.curr_frame.scope.clone()
+					frame.scope.clone()
 				};
 
 				for element in attrset.values() {
@@ -330,14 +350,23 @@ impl Evaluator {
 			OpCode::AppendList(expr) => {
 				let mut list = self.pop_list()?;
 				list.get_mut()
-					.push_back(LazyValue::uneval(expr, self.curr_frame.scope.clone()));
+					.push_back(LazyValue::uneval(expr, frame.scope.clone()));
 				self.push_value(Value::List(list))?;
 			}
-			OpCode::Apply(arg_pos) => self.apply(runtime, arg_pos)?,
+			OpCode::ApplyWith(arg_pos) => {
+				let arg = Thunk::uneval_with_scope(arg_pos, frame.scope.clone()).into();
+				frame.pos = next_pos;
+				return self.apply(runtime, arg);
+			}
+			OpCode::Apply => {
+				let arg = self.pop_thunk()?;
+				frame.pos = next_pos;
+				return self.apply(runtime, arg);
+			}
 
 			OpCode::LoadLambda(lambda_id) => {
 				let lambda = Lambda::Lambda {
-					scope: self.curr_frame.scope.clone(),
+					scope: frame.scope.clone(),
 					lambda: lambda_id,
 				};
 				self.push_value(Value::Lambda(lambda))?;
@@ -355,7 +384,7 @@ impl Evaluator {
 			OpCode::GetAttr => {
 				let index = self.pop_value()?;
 				let indexing = self.pop_value()?;
-				let lazy = self.get_attr(&indexing, &index)?;
+				let lazy = Self::get_attr(&indexing, &index)?;
 
 				if let Some(lazy) = lazy {
 					self.push_thunk(lazy)?;
@@ -376,11 +405,11 @@ impl Evaluator {
 			OpCode::GetAttrOr(else_off) => {
 				let index = self.pop_value()?;
 				let indexing = self.pop_value()?;
-				let lazy = self.get_attr(&indexing, &index).ok().flatten();
+				let lazy = Self::get_attr(&indexing, &index).ok().flatten();
 				if let Some(lazy) = lazy {
 					self.thunk_stack.push(lazy);
 				} else {
-					self.branch(else_off);
+					next_pos = next_pos + else_off;
 				}
 			}
 			OpCode::EvalThunk => {
@@ -389,35 +418,37 @@ impl Evaluator {
 					Ok(value) => self.push_value(value)?,
 					Err(thunk) => {
 						let (pos, scope) = thunk.eval_begin().map_err(EvalError::ThunkEval)?;
-						self.begin_frame(Frame::new(pos, scope, FrameKind::ThunkEval(thunk)))?;
+
+						frame.pos = next_pos;
+
+						return Ok(ByteCodeStep::BeginFrame(Frame {
+							kind: FrameKind::Thunk {
+								eval: EvalFrame { pos, scope },
+								thunk,
+							},
+						}));
 					}
 				}
 			}
 			OpCode::BindThunkScope => {
 				let attr = self.pop_string()?;
 				let thunk = self.pop_thunk()?;
-				self.curr_frame.scope.bind(attr, thunk);
+				frame.scope.bind(attr, thunk);
 			}
 			OpCode::BindValueScope => {
 				let attr = self.pop_string()?;
 				let value = self.pop_value()?;
-				self.curr_frame.scope.bind(attr, value.into());
+				frame.scope.bind(attr, value.into());
 			}
 
 			OpCode::LoadScope => {
 				let name = self.pop_string()?;
-				let Some(lazy) = self.curr_frame.scope.resolve(&name) else {
+				let Some(lazy) = frame.scope.resolve(&name) else {
 					return Err(EvalError::MissingBinding(
 						format!("failed to resolve {name:?}").into(),
 					));
 				};
-				match lazy.try_get_value() {
-					Ok(ok) => self.push_value(ok)?,
-					Err(thunk) => {
-						let (pos, scope) = thunk.eval_begin().map_err(EvalError::ThunkEval)?;
-						self.begin_frame(Frame::new(pos, scope, FrameKind::ThunkEval(thunk)))?;
-					}
-				}
+				self.push_thunk(lazy.clone())?;
 			}
 
 			OpCode::PopV => _ = self.pop_value()?,
@@ -435,11 +466,11 @@ impl Evaluator {
 			}
 
 			OpCode::Ret => {
-				if let Some(value) = self.ret(runtime, prev)? {
-					return Ok(Some(value));
-				}
+				return Ok(ByteCodeStep::Ret);
 			}
 		}
-		Ok(None)
+		frame.pos = next_pos;
+
+		Ok(ByteCodeStep::Pending)
 	}
 }

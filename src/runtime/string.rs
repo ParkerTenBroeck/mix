@@ -6,6 +6,24 @@ pub enum StringKind {
 	Interned(Rc<String>),
 }
 
+impl From<Rc<String>> for StringKind {
+	fn from(value: Rc<String>) -> Self {
+		Self::Interned(value)
+	}
+}
+
+impl From<String> for StringKind {
+	fn from(value: String) -> Self {
+		Self::String(value)
+	}
+}
+
+impl<'a> From<&'a str> for StringKind {
+	fn from(value: &'a str) -> Self {
+		Self::String(value.into())
+	}
+}
+
 impl std::fmt::Debug for StringKind {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		(**self).fmt(f)

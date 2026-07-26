@@ -2,7 +2,7 @@ use crate::{
 	files::{Files, Span},
 	runtime::{
 		Runtime,
-		eval::{EvalError, Evaluator, FrameKind as EvalFrameKind, PotentialFrame},
+		eval::{EvalError, Evaluator, FrameKind as EvalFrameKind},
 	},
 };
 
@@ -41,24 +41,30 @@ impl ErrorTrace {
 			return renderer.render(&[group]);
 		};
 
+		let title = match &frame.kind {
+			FrameKind::NativeFn(name) => format!("{title} (in native function \"{name}\")"),
+			_ => title,
+		};
 		let mut groups = vec![render_frame(
 			&files,
 			frame,
 			Level::ERROR.primary_title(title),
-			if matches!(frame.kind, FrameKind::Fn) {
-				"function call failed here"
-			} else {
-				"evaluation failed here"
+			match &frame.kind {
+				FrameKind::Fn => "function call failed here",
+				FrameKind::NativeFn(_) => "native function call failed",
+				FrameKind::LazyEval => "evaluation failed here",
 			},
 		)];
 
 		groups.extend(frames.map(|frame| {
-			let title = match frame.kind {
-				FrameKind::Fn => "called from here",
-				FrameKind::LazyEval => "while evaluating this expression",
+			let title = match &frame.kind {
+				FrameKind::Fn => "called from here".into(),
+				FrameKind::NativeFn(name) => format!("while calling native function \"{name}\""),
+				FrameKind::LazyEval => "while evaluating this expression".into(),
 			};
-			let label = match frame.kind {
+			let label = match &frame.kind {
 				FrameKind::Fn => "function call",
+				FrameKind::NativeFn(_) => "native function call",
 				FrameKind::LazyEval => "lazy value forced here",
 			};
 			render_frame(&files, frame, Level::ERROR.secondary_title(title), label)
@@ -76,37 +82,33 @@ impl ErrorTrace {
 
 	fn build_trace(runtime: &Runtime, eval: &Evaluator) -> Vec<FrameInfo> {
 		let mut stack: Vec<FrameInfo> = eval
-			.frame_stack
+			.frames
 			.iter()
-			.filter_map(|frame| match frame {
-				PotentialFrame::Realized(frame) => Some(FrameInfo {
-					span: runtime.program.find_pos(frame.pos),
-					kind: map_frame_kind(&frame.kind),
-				}),
-				PotentialFrame::PotentialDeep(_) => None,
-				PotentialFrame::DeepEval(code_pos) => Some(FrameInfo {
-					span: runtime.program.find_pos(*code_pos),
-					kind: FrameKind::LazyEval,
-				}),
-				PotentialFrame::NativeLambda(_) => None,
-			})
+			.filter_map(
+				|frame| None, // match frame {
+				              // PotentialFrame::Realized(frame) => Some(FrameInfo {
+				              // 	span: runtime.program.find_pos(frame.pos),
+				              // 	kind: map_frame_kind(&frame.kind),
+				              // }),
+				              // PotentialFrame::PotentialDeep(_) => None,
+				              // PotentialFrame::DeepEval(code_pos) => Some(FrameInfo {
+				              // 	span: runtime.program.find_pos(*code_pos),
+				              // 	kind: FrameKind::LazyEval,
+				              // }),
+				              // PotentialFrame::NativeLambda(_, name) => Some(FrameInfo {
+				              // 	span: None,
+				              // 	kind: FrameKind::NativeFn(name.clone()),
+				              // }),
+				              // }
+			)
 			.collect();
 
-		stack.push(FrameInfo {
-			span: runtime.program.find_pos(eval.curr_frame.pos),
-			kind: map_frame_kind(&eval.curr_frame.kind),
-		});
+		// stack.push(FrameInfo {
+		// 	span: runtime.program.find_pos(eval.frame.pos),
+		// 	kind: map_frame_kind(&eval.frame.meta),
+		// });
 
 		stack
-	}
-}
-
-fn map_frame_kind(kind: &EvalFrameKind) -> FrameKind {
-	match kind {
-		EvalFrameKind::Function | EvalFrameKind::FunctionDeepRoot => FrameKind::Fn,
-		EvalFrameKind::ThunkEval(_)
-		| EvalFrameKind::ThunkEvalDeep(_)
-		| EvalFrameKind::ThunkEvalDeepRoot(_) => FrameKind::LazyEval,
 	}
 }
 
@@ -118,10 +120,11 @@ fn render_frame<'a>(
 ) -> annotate_snippets::Group<'a> {
 	use annotate_snippets::{AnnotationKind, Snippet};
 
-	let (path, source) = files.file(frame.span.fid);
-	let annotation = AnnotationKind::Primary
-		.span(frame.span.range.into())
-		.label(label);
+	let Some(span) = frame.span else {
+		return annotate_snippets::Group::with_title(title);
+	};
+	let (path, source) = files.file(span.fid);
+	let annotation = AnnotationKind::Primary.span(span.range.into()).label(label);
 	let snippet = Snippet::source(&**source)
 		.path(path.display().to_string())
 		.annotation(annotation);
@@ -131,10 +134,11 @@ fn render_frame<'a>(
 
 pub enum FrameKind {
 	Fn,
+	NativeFn(std::borrow::Cow<'static, str>),
 	LazyEval,
 }
 
 pub struct FrameInfo {
-	pub span: Span,
+	pub span: Option<Span>,
 	pub kind: FrameKind,
 }

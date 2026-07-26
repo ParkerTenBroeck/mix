@@ -218,7 +218,12 @@ impl Compiler {
 			}
 			mir::Expr::Ident("true") => _ = builder.emit_load_bool(true),
 			mir::Expr::Ident("false") => _ = builder.emit_load_bool(false),
-			mir::Expr::Ident(ident) => _ = builder.emit_load_str(ident).emit(OpCode::LoadScope),
+			mir::Expr::Ident(ident) => {
+				_ = builder
+					.emit_load_str(ident)
+					.emit(OpCode::LoadScope)
+					.emit(OpCode::EvalThunk)
+			}
 			mir::Expr::Num(mir::Num::Float(float)) => _ = builder.emit_load_float(*float),
 			mir::Expr::Num(mir::Num::Int(int)) => _ = builder.emit_load_int(*int),
 			mir::Expr::Str(str) => _ = builder.emit_load_str(str),

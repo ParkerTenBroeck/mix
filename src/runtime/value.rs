@@ -163,10 +163,28 @@ impl From<String> for Value {
 	}
 }
 
+impl From<Lambda> for Value {
+	fn from(value: Lambda) -> Self {
+		Self::Lambda(value)
+	}
+}
+
+impl From<NativeLambda> for Value {
+	fn from(value: NativeLambda) -> Self {
+		Self::Lambda(Lambda::NativeLambda(value))
+	}
+}
+
 #[derive(Clone, Debug, Trace)]
 pub enum Lambda {
 	Lambda { scope: Scope, lambda: LambdaId },
 	NativeLambda(NativeLambda),
+}
+
+impl From<NativeLambda> for Lambda{
+	fn from(value: NativeLambda) -> Self {
+		Self::NativeLambda(value)
+	}
 }
 
 #[derive(Clone, Default, Debug, Trace)]

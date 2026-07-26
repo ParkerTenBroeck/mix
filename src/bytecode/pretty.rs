@@ -57,12 +57,15 @@ pub fn render_program(program: &Program, files: &Files) -> String {
 		}
 
 		let guide = flow.guide_for(pos);
+		let source = span
+			.map(|span| format_span(files, span))
+			.unwrap_or_else(|| "<unknown source>".into());
 		out.push_str(&format!(
 			"  {}  {}{: <24} {}\n",
 			fmt_pos(pos),
 			guide,
 			format_op(program, pos, op),
-			format_span(files, span)
+			source
 		));
 	}
 
@@ -111,7 +114,8 @@ fn format_op(program: &Program, pos: CodePos, op: OpCode) -> String {
 		OpCode::FinalizeAttrSet => "FinalizeAttrSet".into(),
 		OpCode::CreateList(capacity) => format!("CreateList {capacity}"),
 		OpCode::AppendList(expr) => format!("AppendList @{}", fmt_pos(expr)),
-		OpCode::Apply(expr) => format!("Apply @{}", fmt_pos(expr)),
+		OpCode::ApplyWith(expr) => format!("ApplyWith @{}", fmt_pos(expr)),
+		OpCode::Apply => format!("Apply"),
 		OpCode::LoadLambda(lambda) => {
 			format!("LoadLambda #{}", lambda.index())
 		}

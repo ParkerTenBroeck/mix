@@ -16,8 +16,8 @@ fn run() {
 
 	let scope = ScopeBuilder::new()
 		.with_builtins()
-		// .with("false", false)
-		// .with("true", true)
+		.with("false", false)
+		.with("true", true)
 		.bottom();
 
 	let mut runtime = Runtime::new(loader.clone(), scope);

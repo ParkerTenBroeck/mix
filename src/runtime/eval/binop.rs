@@ -66,15 +66,13 @@ macro_rules! checked_numeric_op {
 macro_rules! checked_numeric_method {
 	(
 		$name:ident,
-		$this:ident,
 		op_name = $op_name:literal,
 		symbol = $symbol:literal,
 		type_error($bad_lhs:ident, $bad_rhs:ident) = $type_error:block,
 		int = $int_method:ident,
 		float($float_lhs:ident, $float_rhs:ident) = $float_eval:block $(,)?
 	) => {
-		pub(super) fn $name(&self, lhs: Value, rhs: Value) -> Result<Value, EvalError> {
-			let $this = self;
+		pub(super) fn $name(lhs: Value, rhs: Value) -> Result<Value, EvalError> {
 			checked_numeric_op!(
 				lhs,
 				rhs,
@@ -95,7 +93,6 @@ macro_rules! checked_numeric_method {
 macro_rules! checked_zero_numeric_method {
 	(
 		$name:ident,
-		$this:ident,
 		op_name = $op_name:literal,
 		symbol = $symbol:literal,
 		type_error($bad_lhs:ident, $bad_rhs:ident) = $type_error:block,
@@ -103,8 +100,7 @@ macro_rules! checked_zero_numeric_method {
 		float($float_lhs:ident, $float_rhs:ident) = $float_eval:block,
 		zero = $zero_message:literal $(,)?
 	) => {
-		pub(super) fn $name(&self, lhs: Value, rhs: Value) -> Result<Value, EvalError> {
-			let $this = self;
+		pub(super) fn $name(lhs: Value, rhs: Value) -> Result<Value, EvalError> {
 			checked_numeric_op!(
 				lhs,
 				rhs,
@@ -134,8 +130,8 @@ macro_rules! checked_zero_numeric_method {
 	};
 }
 
-impl Evaluator {
-	pub(super) fn binop_eq(&self, op: OpCode, lhs: Value, rhs: Value) -> Result<Value, EvalError> {
+impl LocalEvaluator {
+	pub(super) fn binop_eq(op: OpCode, lhs: Value, rhs: Value) -> Result<Value, EvalError> {
 		let (symbol, invert) = match op {
 			OpCode::Eq => ("==", false),
 			OpCode::Ne => ("!=", true),
@@ -169,7 +165,7 @@ impl Evaluator {
 		Ok(Value::Bool(equal ^ invert))
 	}
 
-	pub(super) fn binop_cmp(&self, op: OpCode, lhs: Value, rhs: Value) -> Result<Value, EvalError> {
+	pub(super) fn binop_cmp(op: OpCode, lhs: Value, rhs: Value) -> Result<Value, EvalError> {
 		let result = match op {
 			OpCode::Lt => binop_cmp!("<", lhs, rhs, lhs, rhs, Value::Bool(lhs < rhs)),
 			OpCode::Lte => binop_cmp!("<=", lhs, rhs, lhs, rhs, Value::Bool(lhs <= rhs)),
@@ -186,7 +182,6 @@ impl Evaluator {
 	}
 
 	fn checked_float_result(
-		&self,
 		op_name: &'static str,
 		lhs: f64,
 		rhs: f64,
@@ -204,7 +199,7 @@ impl Evaluator {
 		}
 	}
 
-	pub(super) fn checked_add(&self, lhs: Value, rhs: Value) -> Result<Value, EvalError> {
+	pub(super) fn checked_add(lhs: Value, rhs: Value) -> Result<Value, EvalError> {
 		match (lhs, rhs) {
 			(Value::String(mut lhs), Value::String(rhs)) => {
 				lhs.get_mut().push_str(&rhs);
@@ -222,14 +217,13 @@ impl Evaluator {
 					checked_int_result!("addition", format!("{lhs} + {rhs}"), lhs.checked_add(rhs),)
 				},
 				float(lhs, rhs) =
-					{ self.checked_float_result("addition", lhs, rhs, |lhs, rhs| lhs + rhs) },
+					{ Self::checked_float_result("addition", lhs, rhs, |lhs, rhs| lhs + rhs) },
 			),
 		}
 	}
 
 	checked_numeric_method!(
 		checked_sub,
-		this,
 		op_name = "subtraction",
 		symbol = "-",
 		type_error(lhs, rhs) = {
@@ -239,12 +233,11 @@ impl Evaluator {
 		},
 		int = checked_sub,
 		float(lhs, rhs) =
-			{ this.checked_float_result("subtraction", lhs, rhs, |lhs, rhs| lhs - rhs) },
+			{ Self::checked_float_result("subtraction", lhs, rhs, |lhs, rhs| lhs - rhs) },
 	);
 
 	checked_numeric_method!(
 		checked_mul,
-		this,
 		op_name = "multiplication",
 		symbol = "*",
 		type_error(lhs, rhs) = {
@@ -254,12 +247,11 @@ impl Evaluator {
 		},
 		int = checked_mul,
 		float(lhs, rhs) =
-			{ this.checked_float_result("multiplication", lhs, rhs, |lhs, rhs| lhs * rhs) },
+			{ Self::checked_float_result("multiplication", lhs, rhs, |lhs, rhs| lhs * rhs) },
 	);
 
 	checked_zero_numeric_method!(
 		checked_div,
-		this,
 		op_name = "division",
 		symbol = "/",
 		type_error(lhs, rhs) = {
@@ -268,13 +260,13 @@ impl Evaluator {
 			}
 		},
 		int = checked_div,
-		float(lhs, rhs) = { this.checked_float_result("division", lhs, rhs, |lhs, rhs| lhs / rhs) },
+		float(lhs, rhs) =
+			{ Self::checked_float_result("division", lhs, rhs, |lhs, rhs| lhs / rhs) },
 		zero = "cannot divide {} by zero",
 	);
 
 	checked_zero_numeric_method!(
 		checked_rem,
-		this,
 		op_name = "remainder",
 		symbol = "%",
 		type_error(lhs, rhs) = {
@@ -284,7 +276,7 @@ impl Evaluator {
 		},
 		int = checked_rem,
 		float(lhs, rhs) =
-			{ this.checked_float_result("remainder", lhs, rhs, |lhs, rhs| lhs % rhs) },
+			{ Self::checked_float_result("remainder", lhs, rhs, |lhs, rhs| lhs % rhs) },
 		zero = "cannot calculate {} % 0",
 	);
 }

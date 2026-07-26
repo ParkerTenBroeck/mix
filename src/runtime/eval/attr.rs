@@ -1,8 +1,7 @@
 use super::*;
 
-impl Evaluator {
+impl LocalEvaluator {
 	pub(super) fn get_attr(
-		&mut self,
 		indexing: &Value,
 		index: &Value,
 	) -> Result<Option<LazyValue>, EvalError> {

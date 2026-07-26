@@ -1,21 +1,18 @@
-use std::ops::Deref;
+use std::{borrow::Cow, ops::Deref};
 
 use dumpster::{Trace, unsync::Gc};
 
 use crate::runtime::{
-	Runtime,
-	eval::{EvalError, Evaluator, NativeCtx},
-	lazy::LazyValue,
-	value::{List, Value},
+	Runtime, eval::{EvalError, NativeCtx, NativeCtxData, NativeLambdaAsync, NativeLambdaDyn, NativeLambdaResult}, lazy::LazyValue, value::{List, Value},
 };
 
 #[derive(Clone, Trace)]
 pub struct NativeLambda {
-	inner: Gc<Box<dyn NativeLambdaTrait>>, // silly rust
+	inner: Gc<Box<dyn NativeLambdaDyn>>, // silly rust
 }
 
 impl Deref for NativeLambda {
-	type Target = dyn NativeLambdaTrait;
+	type Target = dyn NativeLambdaDyn;
 
 	fn deref(&self) -> &Self::Target {
 		&**self.inner
@@ -23,29 +20,11 @@ impl Deref for NativeLambda {
 }
 
 impl NativeLambda {
-	pub fn new<T: NativeLambdaTrait>(lambda: T) -> Self {
+	pub fn new<T: NativeLambdaDyn>(lambda: T) -> Self {
 		Self {
 			inner: Gc::new(Box::new(lambda)),
 		}
 	}
-}
-
-pub type NativeLambdaState = std::pin::Pin<Box<dyn Future<Output = Result<Value, EvalError>>>>;
-
-pub enum NativeLambdaResult {
-	Value(Value),
-	Future(NativeLambdaState),
-	Err(EvalError),
-}
-
-pub trait NativeLambdaTrait: Trace + 'static {
-	fn identifier(&self) -> &str;
-	fn begin(
-		&self,
-		evaluator: &mut Evaluator,
-		runtime: &mut Runtime,
-		arg: LazyValue,
-	) -> NativeLambdaResult;
 }
 
 impl std::fmt::Debug for NativeLambda {
@@ -59,14 +38,14 @@ impl std::fmt::Debug for NativeLambda {
 #[derive(Trace)]
 pub struct Match;
 
-impl NativeLambdaTrait for Match {
-	fn identifier(&self) -> &str {
-		"match"
+impl NativeLambdaDyn for Match {
+	fn identifier(&self) -> Cow<'static, str> {
+		"match".into()
 	}
 
-	fn begin(&self, _: &mut Evaluator, _: &mut Runtime, arg: LazyValue) -> NativeLambdaResult {
+	fn begin(&self, _: &mut Runtime, arg: LazyValue) -> NativeLambdaResult {
 		NativeLambdaResult::Future(Box::pin(async {
-			let lazy = NativeCtx::eval_lazy(arg).await.expect_string()?;
+			let lazy = NativeCtxData::eval_lazy(arg).await?.expect_string()?;
 			let regex = regex::Regex::new(&lazy)
 				.map_err(|err| EvalError::Internal(err.to_string().into()))?;
 
@@ -86,15 +65,15 @@ unsafe impl<__V: ::dumpster::Visitor> ::dumpster::TraceWith<__V> for Matcher {
 	}
 }
 
-impl NativeLambdaTrait for Matcher {
-	fn identifier(&self) -> &str {
-		"matcher"
+impl NativeLambdaDyn for Matcher {
+	fn identifier(&self) -> Cow<'static, str> {
+		"matcher".into()
 	}
 
-	fn begin(&self, _: &mut Evaluator, _: &mut Runtime, arg: LazyValue) -> NativeLambdaResult {
+	fn begin(&self, _: &mut Runtime, arg: LazyValue) -> NativeLambdaResult {
 		let reg = self.0.clone();
 		NativeLambdaResult::Future(Box::pin(async move {
-			let lazy = NativeCtx::eval_lazy(arg).await.expect_string()?;
+			let lazy = NativeCtxData::eval_lazy(arg).await?.expect_string()?;
 
 			let mut list = List::default();
 			if let Some(captures) = reg.captures(&lazy) {
@@ -105,5 +84,46 @@ impl NativeLambdaTrait for Matcher {
 
 			Ok(Value::List(list))
 		}))
+	}
+}
+
+#[derive(Trace, Clone)]
+pub struct MkList<T>(T);
+
+impl MkList<()> {
+	pub fn new() -> Self{
+		Self(())
+	}
+}
+
+impl NativeLambdaDyn for MkList<()> {
+	fn identifier(&self) -> Cow<'static, str> {
+		"mkList".into()
+	}
+
+	fn begin(&self, _: &mut Runtime, arg: LazyValue) -> NativeLambdaResult {
+		NativeLambdaResult::Value(NativeLambda::new(MkList(arg)).into())
+	}
+}
+
+impl NativeLambdaAsync for MkList<LazyValue> {
+	fn identifier(&self) -> Cow<'static, str> {
+		"mkList".into()
+	}
+	
+	async fn apply(self, mut ctx: NativeCtx, arg: LazyValue) -> Result<Value, EvalError> {
+		let func = ctx.eval_lazy(self.0).await?;
+		let len = ctx.eval_lazy(arg).await?.expect_int()?;
+
+		let mut list = List::default();
+
+		for i in 0..len {
+			ctx.fule().await;
+
+			let element = ctx.eval_call_func(func.clone(), i).await?;
+			list.get_mut().push_back(element.into());
+		}
+
+		Ok(Value::List(list))
 	}
 }

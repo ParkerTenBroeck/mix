@@ -24,9 +24,12 @@ impl std::fmt::Debug for Thunk {
 			Some(state) => match &**state {
 				ThunkState::Constructing(_) => f.debug_tuple("Thunk::Constructing").finish(),
 				ThunkState::Unevaluated(_, _) => f.debug_tuple("Thunk::Unevalated").finish(),
-				ThunkState::Evaluating => f.debug_tuple("Thunk::Evaluated").finish(),
+				ThunkState::Evaluating => f.debug_tuple("Thunk::Evaluating").finish(),
 				ThunkState::Evaluated(value) => {
 					f.debug_tuple("Thunk::Evaluated").field(value).finish()
+				}
+				ThunkState::DeepEvaluated(value) => {
+					f.debug_tuple("Thunk::DeepEvaluated").field(value).finish()
 				}
 			},
 			None => f.debug_tuple("Thunk").finish(),
@@ -76,18 +79,27 @@ impl Thunk {
 			ThunkState::Constructing(_) => Err(ThunkEvalErr::NotConstructed),
 			ThunkState::Evaluating => Err(ThunkEvalErr::InfiniteRec),
 			ThunkState::Evaluated(_) => Err(ThunkEvalErr::AlreadyEvaluated),
+			ThunkState::DeepEvaluated(_) => Err(ThunkEvalErr::AlreadyEvaluated),
 		}
 	}
 
-	pub fn eval_end(&self, value: Value) -> Result<(), ()> {
+	pub fn eval_end(&self, value: Value, deep: bool) -> Result<(), ()> {
 		let mut inner = self.0.borrow_mut();
 		match &*inner {
 			ThunkState::Evaluating => {
-				*inner = ThunkState::Evaluated(value);
+				if deep {
+					*inner = ThunkState::DeepEvaluated(value);
+				} else {
+					*inner = ThunkState::Evaluated(value);
+				}
 				Ok(())
 			}
 			_ => Err(()),
 		}
+	}
+
+	pub fn is_deeply_evaluated(&self) -> bool {
+		matches!(&*self.0.borrow(), ThunkState::DeepEvaluated(_))
 	}
 
 	pub fn uneval(code: CodePos, scope: Scope) -> Self {
@@ -100,6 +112,7 @@ impl Thunk {
 			ThunkState::Unevaluated(_, _) => None,
 			ThunkState::Evaluating => None,
 			ThunkState::Evaluated(value) => Some(value.clone()),
+			ThunkState::DeepEvaluated(value) => Some(value.clone()),
 		}
 	}
 
@@ -109,6 +122,7 @@ impl Thunk {
 			ThunkState::Unevaluated(pos, _) => ThunkSnapshot::Unevaluated(*pos),
 			ThunkState::Evaluating => ThunkSnapshot::Evaluating,
 			ThunkState::Evaluated(value) => ThunkSnapshot::Evaluated(value.clone()),
+			ThunkState::DeepEvaluated(value) => ThunkSnapshot::Evaluated(value.clone()),
 		})
 	}
 
@@ -118,6 +132,7 @@ impl Thunk {
 			ThunkState::Unevaluated(_, _) => Some(false),
 			ThunkState::Evaluating => Some(true),
 			ThunkState::Evaluated(_) => Some(false),
+			ThunkState::DeepEvaluated(_) => Some(false),
 		}
 	}
 }
@@ -128,6 +143,7 @@ pub enum ThunkState {
 	Unevaluated(CodePos, Scope),
 	Evaluating,
 	Evaluated(Value),
+	DeepEvaluated(Value),
 }
 
 impl std::fmt::Debug for ThunkState {
@@ -137,6 +153,7 @@ impl std::fmt::Debug for ThunkState {
 			Self::Unevaluated(arg0, _) => f.debug_tuple("Unevaluated").field(arg0).finish(),
 			Self::Evaluating => write!(f, "Evaluating"),
 			Self::Evaluated(arg0) => f.debug_tuple("Evaluated").field(arg0).finish(),
+			Self::DeepEvaluated(arg0) => f.debug_tuple("DeepEvaluated").field(arg0).finish(),
 		}
 	}
 }

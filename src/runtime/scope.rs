@@ -1,9 +1,7 @@
 use dumpster::{Trace, unsync::Gc};
 
 use crate::runtime::{
-	LazyValue,
-	native::{Match, NativeLambda},
-	value::{AttrSet, AttrSetInner, Lambda, StringKind, Value},
+	LazyValue, native::{Match, MkList, NativeLambda}, value::{AttrSet, AttrSetInner, Lambda, StringKind, Value},
 };
 
 #[derive(Clone, Default, Debug, Trace)]
@@ -61,6 +59,11 @@ impl ScopeBuilder {
 		builtins.get_mut().insert(
 			StringKind::String("matcher".into()),
 			Value::Lambda(Lambda::NativeLambda(NativeLambda::new(Match))).into(),
+		);
+
+		builtins.get_mut().insert(
+			StringKind::String("mkList".into()),
+			Value::Lambda(Lambda::NativeLambda(NativeLambda::new(MkList::new()))).into(),
 		);
 
 		self.scope.insert(

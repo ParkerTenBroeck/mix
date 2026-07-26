@@ -255,7 +255,11 @@ impl<'rt> PrettyPrinter<'rt> {
 	}
 
 	fn format_code_pos(&self, pos: CodePos) -> String {
-		self.format_span(self.runtime.program.find_pos(pos))
+		self.runtime
+			.program
+			.find_pos(pos)
+			.map(|span| self.format_span(span))
+			.unwrap_or_else(|| format!("@{}", pos.index()))
 	}
 
 	pub fn format_span(&self, span: Span) -> String {

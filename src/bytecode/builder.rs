@@ -249,7 +249,7 @@ impl<'a> ByteCodeBuilder<'a> {
 		arg: impl FnMut(&mut ByteCodeBuilder<'_>),
 	) -> &mut Self {
 		let arg = self.emit_expr(span, arg).1;
-		self.emit(OpCode::Apply(arg))
+		self.emit(OpCode::ApplyWith(arg))
 	}
 
 	pub fn emit_create_list(&mut self, len: usize) -> &mut Self {

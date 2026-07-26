@@ -78,7 +78,7 @@ pub struct Expr {
 	pub span: Span,
 }
 
-#[derive(Default, Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Program {
 	code: Vec<OpCode>,
 	lambdas: Vec<Lambda>,
@@ -87,6 +87,19 @@ pub struct Program {
 }
 
 impl Program {
+	pub fn new() -> Self {
+		Program {
+			code: vec![OpCode::Apply, OpCode::Ret],
+			lambdas: Default::default(),
+			expressions: Default::default(),
+			strings: Default::default(),
+		}
+	}
+
+	pub fn apply_trampoline(&self) -> CodePos {
+		CodePos(0)
+	}
+
 	pub fn compile(&mut self, expr: &Node<mir::Expr>) -> CodePos {
 		let compiler = crate::compiler::Compiler::new();
 		compiler.compile_top_level(self, expr)
@@ -118,13 +131,12 @@ impl Program {
 		&self.expressions
 	}
 
-	pub fn find_pos(&self, pos: CodePos) -> Span {
+	pub fn find_pos(&self, pos: CodePos) -> Option<Span> {
 		self.expressions
 			.iter()
 			.filter(|expr| (expr.start..expr.end).contains(&pos))
 			.min_by_key(|expr| expr.end.0 - expr.start.0)
-			.unwrap_or(self.expressions.last().unwrap())
-			.span
+			.map(|expr| expr.span)
 	}
 }
 
