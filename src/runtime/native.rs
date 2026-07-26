@@ -3,7 +3,7 @@ use std::{borrow::Cow, ops::Deref};
 use dumpster::{Trace, unsync::Gc};
 
 use crate::runtime::{
-	Runtime, eval::{EvalError, NativeCtx, NativeCtxData, NativeLambdaAsync, NativeLambdaDyn, NativeLambdaResult}, lazy::LazyValue, value::{List, Value},
+	Runtime, eval::{EvalError, NativeCtx, NativeLambdaAsync, NativeLambdaDyn, NativeLambdaResult}, lazy::LazyValue, value::{List, Value},
 };
 
 #[derive(Clone, Trace)]
@@ -35,55 +35,53 @@ impl std::fmt::Debug for NativeLambda {
 	}
 }
 
-#[derive(Trace)]
-pub struct Match;
+#[derive(Clone)]
+pub struct Match<T>(T);
 
-impl NativeLambdaDyn for Match {
-	fn identifier(&self) -> Cow<'static, str> {
-		"match".into()
-	}
-
-	fn begin(&self, _: &mut Runtime, arg: LazyValue) -> NativeLambdaResult {
-		NativeLambdaResult::Future(Box::pin(async {
-			let lazy = NativeCtxData::eval_lazy(arg).await?.expect_string()?;
-			let regex = regex::Regex::new(&lazy)
-				.map_err(|err| EvalError::Internal(err.to_string().into()))?;
-
-			Ok(Value::Lambda(super::value::Lambda::NativeLambda(
-				NativeLambda::new(Matcher(regex)),
-			)))
-		}))
-	}
-}
-
-pub struct Matcher(regex::Regex);
-
-unsafe impl<__V: ::dumpster::Visitor> ::dumpster::TraceWith<__V> for Matcher {
+unsafe impl<__V: ::dumpster::Visitor, T> ::dumpster::TraceWith<__V> for Match<T> {
 	#[inline]
-	fn accept(&self, visitor: &mut __V) -> ::core::result::Result<(), ()> {
+	fn accept(&self, _: &mut __V) -> ::core::result::Result<(), ()> {
 		::core::result::Result::Ok(())
 	}
 }
 
-impl NativeLambdaDyn for Matcher {
-	fn identifier(&self) -> Cow<'static, str> {
-		"matcher".into()
+impl Match<()> {
+	pub fn new() -> Self{
+		Self(())
 	}
+}
 
-	fn begin(&self, _: &mut Runtime, arg: LazyValue) -> NativeLambdaResult {
-		let reg = self.0.clone();
-		NativeLambdaResult::Future(Box::pin(async move {
-			let lazy = NativeCtxData::eval_lazy(arg).await?.expect_string()?;
+impl NativeLambdaAsync for Match<()> {
+	fn identifier(&self) -> Cow<'static, str> {
+		"match".into()
+	}
+	
+	async fn apply(self, mut ctx: NativeCtx, arg: LazyValue) -> Result<Value, EvalError> {
+		let lazy = ctx.eval_lazy(arg).await?.expect_string()?;
+		
+		let regex = regex::Regex::new(&lazy)
+			.map_err(|err| EvalError::Internal(err.to_string().into()))?;
 
-			let mut list = List::default();
-			if let Some(captures) = reg.captures(&lazy) {
-				for capture in captures.iter().flatten() {
-					list.get_mut().push_back(capture.as_str().to_owned().into());
-				}
+		Ok(NativeLambda::new(Match(regex)).into())
+	}
+}
+
+impl NativeLambdaAsync for Match<regex::Regex> {
+	fn identifier(&self) -> Cow<'static, str> {
+		"match".into()
+	}
+	
+	async fn apply(self, mut ctx: NativeCtx, arg: LazyValue) -> Result<Value, EvalError> {
+		let lazy = ctx.eval_lazy(arg).await?.expect_string()?;
+
+		let mut list = List::default();
+		if let Some(captures) = self.0.captures(&lazy) {
+			for capture in captures.iter().flatten() {
+				list.get_mut().push_back(capture.as_str().to_owned().into());
 			}
+		}
 
-			Ok(Value::List(list))
-		}))
+		Ok(Value::List(list))
 	}
 }
 

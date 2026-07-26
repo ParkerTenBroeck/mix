@@ -123,7 +123,7 @@ enum ToEval {
 	None,
 }
 
-pub struct NativeCtxData<'a> {
+struct NativeCtxData<'a> {
 	evaluator: &'a mut LocalEvaluator,
 	runtime: &'a mut Runtime,
 	fule: &'a mut Fule,
@@ -195,72 +195,6 @@ impl NativeCtx {
 		Self::with(|ctx| ctx.evaluator.pop_value()).await
 	}
 }
-
-
-impl<'a> NativeCtxData<'a> {
-	pub async fn with<T>(func: impl FnOnce(&mut NativeCtxData<'_>) -> T) -> T {
-		let (data, vtable) = std::future::poll_fn(|cx: &mut Context<'_>| {
-			Poll::Ready((cx.waker().data(), cx.waker().vtable()))
-		})
-		.await;
-		assert_eq!(vtable, &VTABLE);
-
-		func(unsafe { data.cast_mut().cast::<NativeCtxData>().as_mut().unwrap() })
-	}
-
-	pub fn runtime(&mut self) -> &mut Runtime {
-		self.runtime
-	}
-
-	pub async fn fule() {
-		 
-		let fule = Self::with(|cx|{
-			cx.fule.fule()
-		}).await;
-		if !fule {
-			pending_once().await;
-		}
-	}
-
-	pub async fn eval_lazy(arg: LazyValue) -> Result<Value, EvalError> {
-		match arg.try_get_value() {
-			Ok(value) => Ok(value),
-			Err(thunk) => Self::eval(thunk).await,
-		}
-	}
-
-	pub async fn eval(thunk: Thunk) -> Result<Value, EvalError> {
-		Self::with(|ctx| {
-			debug_assert!(matches!(ctx.to_eval, ToEval::None));
-			ctx.to_eval = ToEval::Thunk(thunk);
-		})
-		.await;
-		pending_once().await;
-		Self::with(|ctx| ctx.evaluator.pop_value()).await
-	}
-
-	pub async fn eval_deep(thunk: Thunk) -> Result<Value, EvalError> {
-		Self::with(|ctx| {
-			debug_assert!(matches!(ctx.to_eval, ToEval::None));
-			ctx.to_eval = ToEval::ThunkDeep(thunk);
-		})
-		.await;
-		pending_once().await;
-		Self::with(|ctx| ctx.evaluator.pop_value()).await
-	}
-
-	pub async fn eval_call_func(func: impl Into<Value>, arg: impl Into<LazyValue>) -> Result<Value, EvalError> {
-		Self::with(|ctx| {
-			debug_assert!(matches!(ctx.to_eval, ToEval::None));
-			ctx.to_eval = ToEval::Func(func.into(), arg.into());
-		})
-		.await;
-		pending_once().await;
-		Self::with(|ctx| ctx.evaluator.pop_value()).await
-	}
-}
-
-
 
 pub struct NativeLambdaFrame {
 	name: Cow<'static, str>,

@@ -57,8 +57,8 @@ impl ScopeBuilder {
 	pub fn with_builtins(mut self) -> Self {
 		let mut builtins = AttrSet::new();
 		builtins.get_mut().insert(
-			StringKind::String("matcher".into()),
-			Value::Lambda(Lambda::NativeLambda(NativeLambda::new(Match))).into(),
+			StringKind::String("match".into()),
+			Value::Lambda(Lambda::NativeLambda(NativeLambda::new(Match::new()))).into(),
 		);
 
 		builtins.get_mut().insert(
