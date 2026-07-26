@@ -22,9 +22,10 @@ impl LocalEvaluator {
 	pub(super) fn apply(
 		&mut self,
 		runtime: &mut Runtime,
+		func: Value,
 		arg: LazyValue,
 	) -> Result<ByteCodeStep, EvalError> {
-		let lambda = self.pop_lambda()?;
+		let lambda = func.expect_lambda()?;
 
 		match lambda {
 			Lambda::Lambda { scope, lambda } => {

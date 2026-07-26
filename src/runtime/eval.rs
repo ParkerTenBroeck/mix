@@ -10,12 +10,13 @@ pub use frame::*;
 
 pub use native::*;
 
-use std::{collections::HashSet, num::NonZeroUsize};
+use std::num::NonZeroUsize;
 
 use crate::{
-	bytecode::{CodePos, OpCode},
+	bytecode::OpCode,
 	runtime::{
 		LazyValue, Runtime, Value,
+		lazy::LazyValueKind,
 		thunk::Thunk,
 		trace::ErrorTrace,
 		value::{AttrSet, Lambda, List, StringKind, ValueType},
@@ -110,7 +111,8 @@ impl Evaluator {
 					res
 				}
 				FrameKind::Native { state, name } => {
-					self.local.poll_native_lambda(runtime, &mut fule, state.as_mut())?
+					self.local
+						.poll_native_lambda(runtime, &mut fule, state.as_mut())?
 				}
 				FrameKind::Deep { pos, remaining } => {
 					todo!()
@@ -323,7 +325,7 @@ impl LocalEvaluator {
 
 				attrset
 					.get_mut()
-					.insert(name, LazyValue::construct_begin(expr));
+					.insert(name, Thunk::construct_begin(expr).into());
 				self.push_value(Value::AttrSet(attrset))?;
 			}
 			op @ (OpCode::FinalizeAttrSetRec | OpCode::FinalizeAttrSet) => {
@@ -354,14 +356,17 @@ impl LocalEvaluator {
 				self.push_value(Value::List(list))?;
 			}
 			OpCode::ApplyWith(arg_pos) => {
+				let func = self.pop_value()?;
 				let arg = Thunk::uneval_with_scope(arg_pos, frame.scope.clone()).into();
+				let ret = self.apply(runtime, func, arg)?;
 				frame.pos = next_pos;
-				return self.apply(runtime, arg);
+				return Ok(ret);
 			}
 			OpCode::Apply => {
+				let func = self.pop_value()?;
 				let arg = self.pop_thunk()?;
 				frame.pos = next_pos;
-				return self.apply(runtime, arg);
+				return self.apply(runtime, func, arg);
 			}
 
 			OpCode::LoadLambda(lambda_id) => {
@@ -415,8 +420,8 @@ impl LocalEvaluator {
 			OpCode::EvalThunk => {
 				let thunk = self.pop_thunk()?;
 				match thunk.try_get_value() {
-					Ok(value) => self.push_value(value)?,
-					Err(thunk) => {
+					LazyValueKind::Value(value) => self.push_value(value)?,
+					LazyValueKind::Thunk(thunk) => {
 						let (pos, scope) = thunk.eval_begin().map_err(EvalError::ThunkEval)?;
 
 						frame.pos = next_pos;
@@ -427,6 +432,11 @@ impl LocalEvaluator {
 								thunk,
 							},
 						}));
+					}
+					LazyValueKind::Apply(application) => {
+						let ret = self.apply(runtime, application.0, application.1)?;
+						frame.pos = next_pos;
+						return Ok(ret);
 					}
 				}
 			}

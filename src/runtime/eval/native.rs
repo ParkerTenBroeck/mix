@@ -1,7 +1,12 @@
 use dumpster::Trace;
 
 use crate::runtime::{
-	Runtime, eval::{ByteCodeStep, EvalError, Frame, Fule, LocalEvaluator}, lazy::LazyValue, native::NativeLambda, thunk::Thunk, value::Value,
+	Runtime,
+	eval::{ByteCodeStep, EvalError, Frame, Fule, LocalEvaluator},
+	lazy::LazyValue,
+	native::NativeLambda,
+	thunk::Thunk,
+	value::Value,
 };
 
 use std::{borrow::Cow, marker::PhantomData, pin::Pin, task::*};
@@ -13,7 +18,6 @@ impl LocalEvaluator {
 		lambda: NativeLambda,
 		arg: LazyValue,
 	) -> Result<ByteCodeStep, EvalError> {
-
 		match lambda.begin(runtime, arg) {
 			NativeLambdaResult::Value(value) => {
 				self.push_value(value)?;
@@ -133,7 +137,6 @@ struct NativeCtxData<'a> {
 
 pub struct NativeCtx(PhantomData<*mut ()>);
 
-
 impl NativeCtx {
 	async fn with<'a, T>(func: impl FnOnce(&'a mut NativeCtxData<'a>) -> T) -> T {
 		let (data, vtable) = std::future::poll_fn(|cx: &mut Context<'_>| {
@@ -145,20 +148,18 @@ impl NativeCtx {
 		func(unsafe { data.cast_mut().cast::<NativeCtxData>().as_mut().unwrap() })
 	}
 
-	pub async fn runtime<T>(&mut self, func: impl FnOnce(&mut Runtime) -> T) -> T{
+	pub async fn runtime<T>(&mut self, func: impl FnOnce(&mut Runtime) -> T) -> T {
 		Self::with(|ctx| func(ctx.runtime)).await
 	}
 
 	pub async fn fule(&mut self) {
-		let fule = Self::with(|cx|{
-			cx.fule.fule()
-		}).await;
+		let fule = Self::with(|cx| cx.fule.fule()).await;
 		if !fule {
 			pending_once().await;
 		}
 	}
 
-		pub async fn eval_lazy(&mut self, arg: LazyValue) -> Result<Value, EvalError> {
+	pub async fn eval_lazy(&mut self, arg: LazyValue) -> Result<Value, EvalError> {
 		match arg.try_get_value() {
 			Ok(value) => Ok(value),
 			Err(thunk) => self.eval(thunk).await,
@@ -185,7 +186,11 @@ impl NativeCtx {
 		Self::with(|ctx| ctx.evaluator.pop_value()).await
 	}
 
-	pub async fn eval_call_func(&mut self, func: impl Into<Value>, arg: impl Into<LazyValue>) -> Result<Value, EvalError> {
+	pub async fn eval_call_func(
+		&mut self,
+		func: impl Into<Value>,
+		arg: impl Into<LazyValue>,
+	) -> Result<Value, EvalError> {
 		Self::with(|ctx| {
 			debug_assert!(matches!(ctx.to_eval, ToEval::None));
 			ctx.to_eval = ToEval::Func(func.into(), arg.into());

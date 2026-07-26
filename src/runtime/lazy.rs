@@ -9,23 +9,23 @@ use crate::{
 
 #[derive(Clone, Debug, Trace)]
 pub struct LazyValue {
-	state: RefCell<LazyValueState>,
+	state: RefCell<LazyValueKind>,
 }
 
 impl<T: Into<Value>> From<T> for LazyValue {
 	fn from(value: T) -> Self {
-		LazyValueState::Value(value.into()).into()
+		LazyValueKind::Value(value.into()).into()
 	}
 }
 
 impl From<Thunk> for LazyValue {
 	fn from(value: Thunk) -> Self {
-		LazyValueState::Thunk(value).into()
+		LazyValueKind::Thunk(value).into()
 	}
 }
 
-impl From<LazyValueState> for LazyValue {
-	fn from(value: LazyValueState) -> Self {
+impl From<LazyValueKind> for LazyValue {
+	fn from(value: LazyValueKind) -> Self {
 		Self {
 			state: RefCell::new(value),
 		}
@@ -33,53 +33,51 @@ impl From<LazyValueState> for LazyValue {
 }
 
 impl LazyValue {
-	pub fn construct_begin(code: CodePos) -> Self {
-		LazyValueState::Thunk(Thunk::construct_begin(code)).into()
-	}
-
 	pub fn construct_end(&self, scope: Scope) -> bool {
 		match &*self.state.borrow() {
-			LazyValueState::Thunk(thunk) => thunk.construct_end(scope),
+			LazyValueKind::Thunk(thunk) => thunk.construct_end(scope),
 			_ => false,
 		}
 	}
 
-	pub fn try_get_value(&self) -> Result<Value, Thunk> {
+	pub fn try_get_value(&self) -> LazyValueKind {
 		let mut myself = self.state.borrow_mut();
 		match &*myself {
-			LazyValueState::Thunk(thunk) => match thunk.get_value() {
+			LazyValueKind::Thunk(thunk) => match thunk.get_value() {
 				Some(value) => {
-					*myself = LazyValueState::Value(value.clone());
-					Ok(value)
+					*myself = LazyValueKind::Value(value.clone());
+					LazyValueKind::Value(value)
 				}
-				None => Err(thunk.clone()),
+				None => myself.clone(),
 			},
-			LazyValueState::Value(value) => Ok(value.clone()),
+			other => other.clone(),
 		}
 	}
 
-	pub fn try_into_value(self) -> Result<Value, Thunk> {
-		match self.state.into_inner() {
-			LazyValueState::Thunk(thunk) => match thunk.get_value() {
-				Some(value) => Ok(value),
-				None => Err(thunk),
-			},
-			LazyValueState::Value(value) => Ok(value),
+	pub fn thunk(self) -> Option<Thunk> {
+		match &*self.state.borrow() {
+			LazyValueKind::Thunk(thunk) => Some(thunk.clone()),
+			_ => None,
 		}
 	}
 
 	pub fn uneval(code: CodePos, scope: Scope) -> Self {
-		LazyValueState::Thunk(Thunk::uneval(code, scope)).into()
+		LazyValueKind::Thunk(Thunk::uneval(code, scope)).into()
+	}
+
+	pub fn apply(func: Value, arg: LazyValue) -> Self {
+		LazyValueKind::Apply(Box::new((func, arg))).into()
 	}
 }
 
 #[derive(Clone, Debug, Trace)]
-pub enum LazyValueState {
+pub enum LazyValueKind {
 	Thunk(Thunk),
+	Apply(Box<(Value, LazyValue)>),
 	Value(Value),
 }
 
-impl<T: Into<Value>> From<T> for LazyValueState {
+impl<T: Into<Value>> From<T> for LazyValueKind {
 	fn from(value: T) -> Self {
 		Self::Value(value.into())
 	}

@@ -1,5 +1,6 @@
 use crate::{
-	bytecode::CodePos, runtime::{eval::NativeLambdaStateBox, scope::Scope, thunk::Thunk},
+	bytecode::CodePos,
+	runtime::{eval::NativeLambdaStateBox, scope::Scope, thunk::Thunk},
 };
 
 #[derive(Clone, Copy, Debug)]
@@ -9,7 +10,6 @@ pub enum DeepKind {
 	RootChild,
 	RemainingChildren(u32),
 }
-
 
 #[derive(Debug)]
 pub struct EvalFrame {

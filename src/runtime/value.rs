@@ -181,7 +181,7 @@ pub enum Lambda {
 	NativeLambda(NativeLambda),
 }
 
-impl From<NativeLambda> for Lambda{
+impl From<NativeLambda> for Lambda {
 	fn from(value: NativeLambda) -> Self {
 		Self::NativeLambda(value)
 	}

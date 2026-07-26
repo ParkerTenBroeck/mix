@@ -74,7 +74,7 @@ impl Runtime {
 			Ok(value) => Ok(value),
 			Err(thunk) => {
 				let mut eval = Evaluator::begin_eval(thunk, true)?;
-				
+
 				let res = eval.run(self, Fule::unlimited());
 				Ok(res
 					.map_err(|err| ErrorTrace::build(self, &eval, err))?

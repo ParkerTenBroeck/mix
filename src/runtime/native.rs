@@ -3,7 +3,10 @@ use std::{borrow::Cow, ops::Deref};
 use dumpster::{Trace, unsync::Gc};
 
 use crate::runtime::{
-	Runtime, eval::{EvalError, NativeCtx, NativeLambdaAsync, NativeLambdaDyn, NativeLambdaResult}, lazy::LazyValue, value::{List, Value},
+	Runtime,
+	eval::{EvalError, NativeCtx, NativeLambdaAsync, NativeLambdaDyn, NativeLambdaResult},
+	lazy::LazyValue,
+	value::{List, Value},
 };
 
 #[derive(Clone, Trace)]
@@ -46,7 +49,7 @@ unsafe impl<__V: ::dumpster::Visitor, T> ::dumpster::TraceWith<__V> for Match<T>
 }
 
 impl Match<()> {
-	pub fn new() -> Self{
+	pub fn new() -> Self {
 		Self(())
 	}
 }
@@ -55,12 +58,12 @@ impl NativeLambdaAsync for Match<()> {
 	fn identifier(&self) -> Cow<'static, str> {
 		"match".into()
 	}
-	
+
 	async fn apply(self, mut ctx: NativeCtx, arg: LazyValue) -> Result<Value, EvalError> {
 		let lazy = ctx.eval_lazy(arg).await?.expect_string()?;
-		
-		let regex = regex::Regex::new(&lazy)
-			.map_err(|err| EvalError::Internal(err.to_string().into()))?;
+
+		let regex =
+			regex::Regex::new(&lazy).map_err(|err| EvalError::Internal(err.to_string().into()))?;
 
 		Ok(NativeLambda::new(Match(regex)).into())
 	}
@@ -70,7 +73,7 @@ impl NativeLambdaAsync for Match<regex::Regex> {
 	fn identifier(&self) -> Cow<'static, str> {
 		"match".into()
 	}
-	
+
 	async fn apply(self, mut ctx: NativeCtx, arg: LazyValue) -> Result<Value, EvalError> {
 		let lazy = ctx.eval_lazy(arg).await?.expect_string()?;
 
@@ -89,7 +92,7 @@ impl NativeLambdaAsync for Match<regex::Regex> {
 pub struct MkList<T>(T);
 
 impl MkList<()> {
-	pub fn new() -> Self{
+	pub fn new() -> Self {
 		Self(())
 	}
 }
@@ -108,7 +111,7 @@ impl NativeLambdaAsync for MkList<LazyValue> {
 	fn identifier(&self) -> Cow<'static, str> {
 		"mkList".into()
 	}
-	
+
 	async fn apply(self, mut ctx: NativeCtx, arg: LazyValue) -> Result<Value, EvalError> {
 		let func = ctx.eval_lazy(self.0).await?;
 		let len = ctx.eval_lazy(arg).await?.expect_int()?;
