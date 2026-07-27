@@ -1,5 +1,10 @@
 use super::*;
 
+pub enum ApplicationResult {
+	Value(Value),
+	Frame(Frame),
+}
+
 impl LocalEvaluator {
 	fn spill_deep_value(&mut self, value: &Value) -> Result<u32, EvalError> {
 		let start = self.thunk_stack.len();
@@ -24,7 +29,7 @@ impl LocalEvaluator {
 		runtime: &mut Runtime,
 		func: Value,
 		arg: LazyValue,
-	) -> Result<ByteCodeStep, EvalError> {
+	) -> Result<ApplicationResult, EvalError> {
 		let lambda = func.expect_lambda()?;
 
 		match lambda {
@@ -37,7 +42,7 @@ impl LocalEvaluator {
 
 				self.thunk_stack.push(arg);
 
-				Ok(ByteCodeStep::BeginFrame(Frame {
+				Ok(ApplicationResult::Frame(Frame {
 					kind: FrameKind::Function {
 						eval: EvalFrame {
 							pos: lambda.code,

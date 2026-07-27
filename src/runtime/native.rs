@@ -121,7 +121,7 @@ impl NativeLambdaAsync for MkList<LazyValue> {
 		for i in 0..len {
 			ctx.fule().await;
 
-			let element = ctx.eval_call_func(func.clone(), i).await?;
+			let element = LazyValue::apply(func.clone(), i.into()); // ctx.eval_call_func(func.clone(), i).await?;
 			list.get_mut().push_back(element.into());
 		}
 

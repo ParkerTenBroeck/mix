@@ -56,30 +56,11 @@ impl Runtime {
 		Ok(expr)
 	}
 
-	pub fn eval(&mut self, lazy: LazyValue) -> Result<Value, ErrorTrace> {
-		match lazy.try_get_value() {
-			Ok(value) => Ok(value),
-			Err(thunk) => {
-				let mut eval = Evaluator::begin_eval(thunk, false)?;
-				let res = eval.run(self, Fule::unlimited());
-				Ok(res
-					.map_err(|err| ErrorTrace::build(self, &eval, err))?
-					.unwrap())
-			}
-		}
-	}
-
-	pub fn deep_eval(&mut self, lazy: LazyValue) -> Result<Value, ErrorTrace> {
-		match lazy.try_get_value() {
-			Ok(value) => Ok(value),
-			Err(thunk) => {
-				let mut eval = Evaluator::begin_eval(thunk, true)?;
-
-				let res = eval.run(self, Fule::unlimited());
-				Ok(res
-					.map_err(|err| ErrorTrace::build(self, &eval, err))?
-					.unwrap())
-			}
-		}
+	pub fn eval(&mut self, lazy: LazyValue, deep: bool) -> Result<Value, ErrorTrace> {
+		let mut eval = Evaluator::begin_eval(self, lazy, deep)?;
+		let res = eval.run(self, Fule::unlimited());
+		Ok(res
+			.map_err(|err| ErrorTrace::build(self, &eval, err))?
+			.unwrap())
 	}
 }

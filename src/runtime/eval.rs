@@ -56,28 +56,20 @@ impl Fule {
 }
 
 impl Evaluator {
-	pub fn begin_eval(thunk: Thunk, recursive: bool) -> Result<Evaluator, ErrorTrace> {
-		let (pos, scope, thunk) = match thunk.eval_begin() {
-			Ok((pos, scope)) => (pos, scope, thunk),
-			Err(err) => {
-				return Err(ErrorTrace {
-					kind: EvalError::ThunkEval(err),
-					stack: Vec::new(),
-				});
-			}
-		};
-		let frame = Frame {
-			kind: FrameKind::Thunk {
-				eval: EvalFrame { pos, scope },
-				thunk,
-			},
-		};
-
-		Ok(Self {
+	pub fn begin_eval(
+		runtime: &mut Runtime,
+		thunk: LazyValue,
+		deep: bool,
+	) -> Result<Evaluator, ErrorTrace> {
+		let mut myself = Self {
 			local: Default::default(),
-			frames: vec![frame],
-			// frame: Frame::new(pos, scope, meta),
-		})
+			frames: vec![],
+		};
+		match myself.local.eval_lazy(runtime, thunk).unwrap() {
+			EvalResult::Value(value) => myself.local.value_stack.push(value),
+			EvalResult::Frame(frame) => myself.frames.push(frame),
+		}
+		Ok(myself)
 	}
 
 	fn begin_frame(&mut self, frame: Frame) -> Result<(), EvalError> {
@@ -198,6 +190,11 @@ enum ByteCodeStep {
 	BeginFrame(Frame),
 }
 
+pub enum EvalResult {
+	Value(Value),
+	Frame(Frame),
+}
+
 impl LocalEvaluator {
 	fn run_bytecode(
 		&mut self,
@@ -212,6 +209,32 @@ impl LocalEvaluator {
 			}
 		}
 		Ok(ByteCodeStep::Pending)
+	}
+
+	fn eval_lazy(
+		&mut self,
+		runtime: &mut Runtime,
+		thunk: LazyValue,
+	) -> Result<EvalResult, EvalError> {
+		match thunk.try_get_value() {
+			LazyValueKind::Thunk(thunk) => {
+				let (pos, scope) = thunk.eval_begin().map_err(EvalError::ThunkEval)?;
+
+				return Ok(EvalResult::Frame(Frame {
+					kind: FrameKind::Thunk {
+						eval: EvalFrame { pos, scope },
+						thunk,
+					},
+				}));
+			}
+			LazyValueKind::Apply(application) => {
+				match self.apply(runtime, application.0, application.1)? {
+					func::ApplicationResult::Value(value) => Ok(EvalResult::Value(value)),
+					func::ApplicationResult::Frame(frame) => Ok(EvalResult::Frame(frame)),
+				}
+			}
+			LazyValueKind::Value(value) => Ok(EvalResult::Value(value)),
+		}
 	}
 
 	fn step_bytecode(
@@ -355,20 +378,18 @@ impl LocalEvaluator {
 					.push_back(LazyValue::uneval(expr, frame.scope.clone()));
 				self.push_value(Value::List(list))?;
 			}
-			OpCode::ApplyWith(arg_pos) => {
+			OpCode::Apply(arg_pos) => {
 				let func = self.pop_value()?;
 				let arg = Thunk::uneval_with_scope(arg_pos, frame.scope.clone()).into();
-				let ret = self.apply(runtime, func, arg)?;
-				frame.pos = next_pos;
-				return Ok(ret);
+				let res = self.apply(runtime, func, arg)?;
+				match res {
+					func::ApplicationResult::Value(value) => self.push_value(value)?,
+					func::ApplicationResult::Frame(next_frame) => {
+						frame.pos = next_pos;
+						return Ok(ByteCodeStep::BeginFrame(next_frame));
+					}
+				}
 			}
-			OpCode::Apply => {
-				let func = self.pop_value()?;
-				let arg = self.pop_thunk()?;
-				frame.pos = next_pos;
-				return self.apply(runtime, func, arg);
-			}
-
 			OpCode::LoadLambda(lambda_id) => {
 				let lambda = Lambda::Lambda {
 					scope: frame.scope.clone(),
@@ -418,25 +439,13 @@ impl LocalEvaluator {
 				}
 			}
 			OpCode::EvalThunk => {
-				let thunk = self.pop_thunk()?;
-				match thunk.try_get_value() {
-					LazyValueKind::Value(value) => self.push_value(value)?,
-					LazyValueKind::Thunk(thunk) => {
-						let (pos, scope) = thunk.eval_begin().map_err(EvalError::ThunkEval)?;
+				let lazy = self.pop_thunk()?;
 
+				match self.eval_lazy(runtime, lazy)? {
+					EvalResult::Value(value) => self.push_value(value)?,
+					EvalResult::Frame(next_frame) => {
 						frame.pos = next_pos;
-
-						return Ok(ByteCodeStep::BeginFrame(Frame {
-							kind: FrameKind::Thunk {
-								eval: EvalFrame { pos, scope },
-								thunk,
-							},
-						}));
-					}
-					LazyValueKind::Apply(application) => {
-						let ret = self.apply(runtime, application.0, application.1)?;
-						frame.pos = next_pos;
-						return Ok(ret);
+						return Ok(ByteCodeStep::BeginFrame(next_frame));
 					}
 				}
 			}

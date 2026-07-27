@@ -89,15 +89,11 @@ pub struct Program {
 impl Program {
 	pub fn new() -> Self {
 		Program {
-			code: vec![OpCode::Apply, OpCode::Ret],
+			code: Default::default(),
 			lambdas: Default::default(),
 			expressions: Default::default(),
 			strings: Default::default(),
 		}
-	}
-
-	pub fn apply_trampoline(&self) -> CodePos {
-		CodePos(0)
 	}
 
 	pub fn compile(&mut self, expr: &Node<mir::Expr>) -> CodePos {

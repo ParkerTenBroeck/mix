@@ -76,8 +76,14 @@ impl<'rt> PrettyPrinter<'rt> {
 
 	fn count_lazy(&mut self, value: &LazyValue, seen: &mut HashSet<ObjectKey>) {
 		match value.try_get_value() {
-			Err(thunk) => self.count_thunk(&thunk, seen),
-			Ok(value) => self.count_value(&value, seen),
+			// Err(thunk) => self.count_thunk(&thunk, seen),
+			// Ok(value) => self.count_value(&value, seen),
+			super::lazy::LazyValueKind::Thunk(thunk) => self.count_thunk(&thunk, seen),
+			super::lazy::LazyValueKind::Apply(app) => {
+				self.count_value(&app.0, seen);
+				self.count_lazy(&app.1, seen);
+			}
+			super::lazy::LazyValueKind::Value(value) => self.count_value(&value, seen),
 		}
 	}
 
@@ -129,8 +135,15 @@ impl<'rt> PrettyPrinter<'rt> {
 
 	fn render_lazy_inner(&mut self, value: &LazyValue, indent: usize) -> String {
 		match value.try_get_value() {
-			Err(thunk) => self.render_thunk(&thunk, indent),
-			Ok(value) => self.render_value_inner(&value, indent),
+			super::lazy::LazyValueKind::Thunk(thunk) => self.render_thunk(&thunk, indent),
+			super::lazy::LazyValueKind::Apply(app) => {
+				format!(
+					"{} |> {}",
+					self.render_value_inner(&app.0, indent),
+					self.render_lazy_inner(&app.1, indent)
+				)
+			}
+			super::lazy::LazyValueKind::Value(value) => self.render_value_inner(&value, indent),
 		}
 	}
 

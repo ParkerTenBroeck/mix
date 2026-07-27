@@ -114,8 +114,7 @@ fn format_op(program: &Program, pos: CodePos, op: OpCode) -> String {
 		OpCode::FinalizeAttrSet => "FinalizeAttrSet".into(),
 		OpCode::CreateList(capacity) => format!("CreateList {capacity}"),
 		OpCode::AppendList(expr) => format!("AppendList @{}", fmt_pos(expr)),
-		OpCode::ApplyWith(expr) => format!("ApplyWith @{}", fmt_pos(expr)),
-		OpCode::Apply => format!("Apply"),
+		OpCode::Apply(expr) => format!("Apply @{}", fmt_pos(expr)),
 		OpCode::LoadLambda(lambda) => {
 			format!("LoadLambda #{}", lambda.index())
 		}

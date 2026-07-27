@@ -33,8 +33,7 @@ pub enum OpCode {
 	CreateList(usize),
 	AppendList(ExprLoc),
 
-	ApplyWith(ExprLoc),
-	Apply,
+	Apply(ExprLoc),
 
 	LoadLambda(LambdaId),
 	LoadStr(StrId),

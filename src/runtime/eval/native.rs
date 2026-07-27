@@ -2,8 +2,8 @@ use dumpster::Trace;
 
 use crate::runtime::{
 	Runtime,
-	eval::{ByteCodeStep, EvalError, Frame, Fule, LocalEvaluator},
-	lazy::LazyValue,
+	eval::{ByteCodeStep, EvalError, Frame, Fule, LocalEvaluator, func::ApplicationResult},
+	lazy::{LazyValue, LazyValueKind},
 	native::NativeLambda,
 	thunk::Thunk,
 	value::Value,
@@ -17,15 +17,12 @@ impl LocalEvaluator {
 		runtime: &mut Runtime,
 		lambda: NativeLambda,
 		arg: LazyValue,
-	) -> Result<ByteCodeStep, EvalError> {
+	) -> Result<ApplicationResult, EvalError> {
 		match lambda.begin(runtime, arg) {
-			NativeLambdaResult::Value(value) => {
-				self.push_value(value)?;
-				Ok(ByteCodeStep::Ret)
-			}
+			NativeLambdaResult::Value(value) => Ok(ApplicationResult::Value(value)),
 			NativeLambdaResult::Err(err) => Err(err),
 
-			NativeLambdaResult::Future(future) => Ok(ByteCodeStep::BeginFrame(Frame {
+			NativeLambdaResult::Future(future) => Ok(ApplicationResult::Frame(Frame {
 				kind: crate::runtime::eval::FrameKind::Native {
 					state: future,
 					name: lambda.identifier(),
@@ -59,9 +56,7 @@ impl LocalEvaluator {
 			Poll::Pending => {}
 		}
 
-		let res = data.to_eval;
-
-		match res {
+		match data.to_eval {
 			ToEval::Thunk(thunk) => {
 				let (pos, scope) = thunk.eval_begin().map_err(EvalError::ThunkEval)?;
 				Ok(ByteCodeStep::BeginFrame(Frame {
@@ -80,19 +75,13 @@ impl LocalEvaluator {
 					},
 				}))
 			}
-			ToEval::Func(func, arg) => {
-				self.push_value(func)?;
-				self.push_thunk(arg)?;
-
-				Ok(ByteCodeStep::BeginFrame(Frame {
-					kind: super::FrameKind::Function {
-						eval: super::EvalFrame {
-							pos: runtime.program.apply_trampoline(),
-							scope: runtime.default_scope.clone(),
-						},
-					},
-				}))
-			}
+			ToEval::Func(func, arg) => match self.apply(runtime, func, arg)? {
+				ApplicationResult::Value(value) => {
+					self.push_value(value)?;
+					Ok(ByteCodeStep::Pending)
+				}
+				ApplicationResult::Frame(frame) => Ok(ByteCodeStep::BeginFrame(frame)),
+			},
 			ToEval::None => Ok(ByteCodeStep::Pending),
 		}
 	}
@@ -161,8 +150,9 @@ impl NativeCtx {
 
 	pub async fn eval_lazy(&mut self, arg: LazyValue) -> Result<Value, EvalError> {
 		match arg.try_get_value() {
-			Ok(value) => Ok(value),
-			Err(thunk) => self.eval(thunk).await,
+			LazyValueKind::Value(value) => Ok(value),
+			LazyValueKind::Thunk(thunk) => self.eval(thunk).await,
+			LazyValueKind::Apply(app) => self.eval_call_func(app.0, app.1).await,
 		}
 	}
 
