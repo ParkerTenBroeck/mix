@@ -1,9 +1,7 @@
 pub mod eval;
 pub mod lazy;
-pub mod native;
 pub mod pretty;
 pub mod scope;
-pub mod string;
 pub mod thunk;
 pub mod trace;
 pub mod value;

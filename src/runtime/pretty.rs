@@ -243,7 +243,7 @@ impl<'rt> PrettyPrinter<'rt> {
 			ThunkSnapshot::Apply(func, arg) => {
 				let func = self.render_value_inner(&func, indent);
 				let arg = self.render_lazy_inner(&arg, indent);
-				format!("{prefix}{func} |> {arg}")
+				format!("{prefix}{func} {arg}")
 			}
 			ThunkSnapshot::Evaluating => format!("{prefix}<<thunk evaluating>>"),
 			ThunkSnapshot::Evaluated(value) => {

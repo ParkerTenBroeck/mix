@@ -24,12 +24,10 @@ impl LocalEvaluator {
 
 				self.thunk_stack.push(arg);
 
-				Ok(ApplyResult::Frame(FrameKind::ByteCode(
-					ByteCodeFrame {
-						pos: lambda.code,
-						scope: scope.new_level(),
-					},
-				)))
+				Ok(ApplyResult::Frame(FrameKind::ByteCode(ByteCodeFrame {
+					pos: lambda.code,
+					scope: scope.new_level(),
+				})))
 			}
 			Lambda::NativeLambda(native_lambda) => {
 				Self::apply_native_lambda(runtime, native_lambda, arg)

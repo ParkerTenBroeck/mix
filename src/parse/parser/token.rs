@@ -18,7 +18,6 @@ impl Delim {
 }
 
 impl<'a> Token<'a> {
-
 	pub(super) fn start_fn_arg(&self) -> bool {
 		match self {
 			Token::Ident(_) => true,

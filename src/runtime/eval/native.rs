@@ -2,12 +2,10 @@ use dumpster::Trace;
 
 use crate::runtime::{
 	Runtime,
-	eval::{
-		EvalError, EvalStep, FrameKind, Fule, LocalEvaluator, NativeFrame, func::ApplyResult,
-	},
+	eval::{EvalError, EvalStep, FrameKind, Fule, LocalEvaluator, NativeFrame, func::ApplyResult},
 	lazy::{LazyValue, LazyValueKind},
-	native::NativeLambda,
 	thunk::Thunk,
+	value::NativeLambda,
 	value::Value,
 };
 

@@ -1,8 +1,6 @@
 use crate::{
 	bytecode::CodePos,
-	runtime::{
-		eval::NativeLambdaStateBox, scope::Scope, thunk::Thunk,
-	},
+	runtime::{eval::NativeLambdaStateBox, scope::Scope, thunk::Thunk},
 };
 
 #[derive(Clone, Copy, Debug)]

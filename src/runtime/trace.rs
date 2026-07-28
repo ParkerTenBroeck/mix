@@ -103,7 +103,6 @@ impl ErrorTrace {
 			)
 			.collect();
 
-
 		stack
 	}
 }
