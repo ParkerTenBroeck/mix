@@ -51,6 +51,7 @@ pub enum OpCode {
 	GetAttrOr(CodeLocOffset),
 
 	EvalThunk,
+	UnEvalValue,
 
 	BindThunkScope,
 	BindValueScope,

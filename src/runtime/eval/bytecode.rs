@@ -1,7 +1,6 @@
 use crate::runtime::{
 	Runtime,
 	eval::{ByteCodeFrame, EvalError, EvalStep, Fule, LocalEvaluator, ThunkResult},
-	lazy::LazyValue,
 	thunk::Thunk,
 	value::{AttrSet, Lambda, List, Value, ValueType},
 };
@@ -140,13 +139,12 @@ impl LocalEvaluator {
 
 				let mut scope = frame.scope.clone();
 				for (name, value) in attrset.iter() {
-					scope.bind(name.clone(), value.clone());
+                    // ignore result as some values might have already been finalized (inherited from elsewhere)
+					_ = value.construct_end(scope.clone());
+					// bind values into scope
+                    scope.bind(name.clone(), value.clone());
 				}
 
-				for element in attrset.values() {
-					// ignore result as some values might have already been finalized (inherited from elsewhere)
-					_ = element.construct_end(scope.clone());
-				}
 				self.push_value(Value::AttrSet(attrset))?;
 			}
 			OpCode::CreateList(capacity) => {
@@ -229,6 +227,10 @@ impl LocalEvaluator {
 					}
 				}
 			}
+            OpCode::UnEvalValue => {
+                let value = self.pop_value()?;
+                self.push_thunk(value.into())?;
+            }
 			OpCode::BindThunkScope => {
 				let attr = self.pop_string()?;
 				let thunk = self.pop_thunk()?;

@@ -132,6 +132,7 @@ fn format_op(program: &Program, pos: CodePos, op: OpCode) -> String {
 		OpCode::DupT => "DupT".into(),
 		OpCode::Ret => "Ret".into(),
 		OpCode::EvalThunk => "EvalThunk".into(),
+		OpCode::UnEvalValue => "UnEvalValue".into(),
 		OpCode::BindThunkScope => "BindThunkScope".into(),
 		OpCode::BindValueScope => "BindValueScope".into(),
 		OpCode::CreateThunk(expr) => format!("CreateThunk @{}", fmt_pos(expr)),
