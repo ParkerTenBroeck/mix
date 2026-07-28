@@ -54,7 +54,7 @@ impl LazyValue {
 		}
 	}
 
-	pub fn thunk(self) -> Option<Thunk> {
+	pub fn thunk(&self) -> Option<Thunk> {
 		match &*self.state.borrow() {
 			LazyValueKind::Thunk(thunk) => Some(thunk.clone()),
 			_ => None,

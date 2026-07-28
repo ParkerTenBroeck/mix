@@ -95,7 +95,8 @@ impl Compiler {
 			}
 			mir::Expr::FuncApp { func, arg } => {
 				self.compile_expr(builder, func)
-					.emit_fn_app(arg.1, |builder| _ = self.compile_expr(builder, arg));
+					.emit_create_thunk(arg.1, |builder| _ = self.compile_expr(builder, arg))
+					.emit_apply();
 			}
 			mir::Expr::IfThenElse {
 				cond,
@@ -161,7 +162,9 @@ impl Compiler {
 						builder.emit_load_str(attr.0.name.0);
 						let expr = builder
 							.emit_expr(value.1, |builder| _ = self.compile_expr(builder, value));
-						builder.emit(OpCode::InitAttrExpr(expr.1));
+						builder
+							.emit(OpCode::BeginThunk(expr.1))
+							.emit(OpCode::SetAttr);
 					} else {
 						todo!()
 					}
@@ -172,7 +175,9 @@ impl Compiler {
 						self.compile_attr_part(builder, &attr.0.part);
 						let expr = builder
 							.emit_expr(value.1, |builder| _ = self.compile_expr(builder, value));
-						builder.emit(OpCode::InitAttrExpr(expr.1));
+						builder
+							.emit(OpCode::BeginThunk(expr.1))
+							.emit(OpCode::SetAttr);
 					} else {
 						todo!()
 					}
@@ -182,9 +187,9 @@ impl Compiler {
 			mir::Expr::List { elements } => {
 				builder.emit_create_list(elements.len());
 				for element in elements {
-					builder.emit_append_list(element.1, |builder| {
-						_ = self.compile_expr(builder, element)
-					});
+					builder
+						.emit_create_thunk(element.1, |builder| _ = self.compile_expr(builder, element))
+						.emit(OpCode::AppendList);
 				}
 			}
 			mir::Expr::AccessAttr { expr, path, or } => {

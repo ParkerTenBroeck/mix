@@ -109,12 +109,11 @@ fn format_op(program: &Program, pos: CodePos, op: OpCode) -> String {
 		OpCode::LogImp(offset) => format_jump("LogImp", pos, offset),
 		OpCode::If(offset) => format_jump("If", pos, offset),
 		OpCode::CreateAttrSet => "CreateAttrSet".into(),
-		OpCode::InitAttrExpr(expr) => format!("InitAttrExpr @{}", fmt_pos(expr)),
+		OpCode::SetAttr => "SetAttr".into(),
 		OpCode::FinalizeAttrSetRec => "FinalizeAttrSetRec".into(),
-		OpCode::FinalizeAttrSet => "FinalizeAttrSet".into(),
 		OpCode::CreateList(capacity) => format!("CreateList {capacity}"),
-		OpCode::AppendList(expr) => format!("AppendList @{}", fmt_pos(expr)),
-		OpCode::Apply(expr) => format!("Apply @{}", fmt_pos(expr)),
+		OpCode::AppendList => "AppendList".into(),
+		OpCode::Apply => "Apply".into(),
 		OpCode::LoadLambda(lambda) => {
 			format!("LoadLambda #{}", lambda.index())
 		}
@@ -135,6 +134,9 @@ fn format_op(program: &Program, pos: CodePos, op: OpCode) -> String {
 		OpCode::EvalThunk => "EvalThunk".into(),
 		OpCode::BindThunkScope => "BindThunkScope".into(),
 		OpCode::BindValueScope => "BindValueScope".into(),
+		OpCode::CreateThunk(expr) => format!("CreateThunk @{}", fmt_pos(expr)),
+		OpCode::BeginThunk(expr) => format!("BeginThunk @{}", fmt_pos(expr)),
+		OpCode::FinalizeThunk => "FinalizeThunk".into(),
 	}
 }
 

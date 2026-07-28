@@ -243,25 +243,37 @@ impl<'a> ByteCodeBuilder<'a> {
 		}
 	}
 
-	pub fn emit_fn_app(
+	pub fn emit_create_thunk(
 		&mut self,
 		span: Span,
-		arg: impl FnMut(&mut ByteCodeBuilder<'_>),
+		expr: impl FnOnce(&mut ByteCodeBuilder),
 	) -> &mut Self {
-		let arg = self.emit_expr(span, arg).1;
-		self.emit(OpCode::Apply(arg))
+		let loc = self.emit_expr(span, expr).1;
+		self.emit(OpCode::CreateThunk(loc))
+	}
+
+	pub fn emit_begin_thunk(
+		&mut self,
+		span: Span,
+		expr: impl FnOnce(&mut ByteCodeBuilder),
+	) -> &mut Self {
+		let loc = self.emit_expr(span, expr).1;
+		self.emit(OpCode::BeginThunk(loc))
+	}
+
+	pub fn emit_finalize_thunk(
+		&mut self,
+	) -> &mut Self{
+		self.emit(OpCode::FinalizeThunk)
+	}
+
+
+	pub fn emit_apply(&mut self) -> &mut Self {
+		self.emit(OpCode::Apply)
 	}
 
 	pub fn emit_create_list(&mut self, len: usize) -> &mut Self {
 		self.emit(OpCode::CreateList(len))
-	}
-	pub fn emit_append_list(
-		&mut self,
-		span: Span,
-		arg: impl FnMut(&mut ByteCodeBuilder<'_>),
-	) -> &mut Self {
-		let arg = self.emit_expr(span, arg).1;
-		self.emit(OpCode::AppendList(arg))
 	}
 
 	pub fn emit_load_str(&mut self, str: &str) -> &mut Self {

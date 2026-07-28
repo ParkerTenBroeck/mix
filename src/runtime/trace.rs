@@ -81,8 +81,7 @@ impl ErrorTrace {
 	}
 
 	fn build_trace(runtime: &Runtime, eval: &Evaluator) -> Vec<FrameInfo> {
-		let mut stack: Vec<FrameInfo> = eval
-			.frames
+		eval.frames
 			.iter()
 			.filter_map(
 				|frame| None, // match frame {
@@ -101,9 +100,7 @@ impl ErrorTrace {
 				              // }),
 				              // }
 			)
-			.collect();
-
-		stack
+			.collect()
 	}
 }
 

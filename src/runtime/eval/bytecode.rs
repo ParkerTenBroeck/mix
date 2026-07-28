@@ -127,26 +127,21 @@ impl LocalEvaluator {
 			OpCode::CreateAttrSet => {
 				self.value_stack.push(Value::AttrSet(AttrSet::default()));
 			}
-			OpCode::InitAttrExpr(expr) => {
+			OpCode::SetAttr => {
 				let name = self.pop_string()?;
 				let mut attrset = self.pop_attrset()?;
+				let value = self.pop_thunk()?;
 
-				attrset
-					.get_mut()
-					.insert(name, Thunk::construct_begin(expr).into());
+				attrset.get_mut().insert(name, value);
 				self.push_value(Value::AttrSet(attrset))?;
 			}
-			op @ (OpCode::FinalizeAttrSetRec | OpCode::FinalizeAttrSet) => {
+			OpCode::FinalizeAttrSetRec => {
 				let attrset = self.pop_attrset()?;
-				let scope = if op == OpCode::FinalizeAttrSetRec {
-					let mut scope = frame.scope.clone();
-					for (name, value) in attrset.iter() {
-						scope.bind(name.clone(), value.clone());
-					}
-					scope
-				} else {
-					frame.scope.clone()
-				};
+
+				let mut scope = frame.scope.clone();
+				for (name, value) in attrset.iter() {
+					scope.bind(name.clone(), value.clone());
+				}
 
 				for element in attrset.values() {
 					// ignore result as some values might have already been finalized (inherited from elsewhere)
@@ -157,15 +152,15 @@ impl LocalEvaluator {
 			OpCode::CreateList(capacity) => {
 				self.push_value(Value::List(List::with_capacity(capacity)))?
 			}
-			OpCode::AppendList(expr) => {
+			OpCode::AppendList => {
 				let mut list = self.pop_list()?;
-				list.get_mut()
-					.push_back(LazyValue::uneval(expr, frame.scope.clone()));
+				let value = self.pop_thunk()?;
+				list.get_mut().push_back(value);
 				self.push_value(Value::List(list))?;
 			}
-			OpCode::Apply(arg_pos) => {
+			OpCode::Apply => {
 				let func = self.pop_value()?;
-				let arg = Thunk::uneval_with_scope(arg_pos, frame.scope.clone()).into();
+				let arg = self.pop_thunk()?;
 
 				match self.eval_apply(runtime, func, arg, None, false)? {
 					ThunkResult::Value(value) => self.push_value(value)?,
@@ -243,6 +238,24 @@ impl LocalEvaluator {
 				let attr = self.pop_string()?;
 				let value = self.pop_value()?;
 				frame.scope.bind(attr, value.into());
+			}
+
+			OpCode::CreateThunk(code_pos) => {
+				self.push_thunk(Thunk::uneval(code_pos, frame.scope.clone()).into())?
+			}
+			OpCode::BeginThunk(code_pos) => {
+				self.push_thunk(Thunk::construct_begin(code_pos).into())?
+			}
+			OpCode::FinalizeThunk => {
+				let succ = self
+					.peek_thunk()?
+					.thunk()
+					.map_or(false, |t| t.construct_end(frame.scope.clone()));
+				if !succ {
+					return Err(EvalError::ByteCode(
+						"attempted to finalize thunk which has already been finalized",
+					));
+				}
 			}
 
 			OpCode::LoadScope => {

@@ -83,7 +83,7 @@ impl Evaluator {
 			if let Some(thunk) = &frame.thunk
 				&& matches!(res, EvalStep::Ret)
 			{
-				thunk.eval_end(self.local.peek_value()?).unwrap();
+				thunk.eval_end(self.local.peek_value()?.clone()).unwrap();
 			}
 
 			match res {
@@ -113,10 +113,15 @@ impl LocalEvaluator {
 		Ok(())
 	}
 
-	fn peek_value(&mut self) -> Result<Value, EvalError> {
+	fn peek_value(&mut self) -> Result<&Value, EvalError> {
 		self.value_stack
 			.last()
-			.cloned()
+			.ok_or(EvalError::ByteCode("value stack"))
+	}
+
+	fn peek_thunk(&mut self) -> Result<&LazyValue, EvalError> {
+		self.thunk_stack
+			.last()
 			.ok_or(EvalError::ByteCode("value stack"))
 	}
 

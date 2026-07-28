@@ -19,6 +19,10 @@ pub enum OpCode {
 	Not,
 	Neg,
 
+	CreateThunk(ExprLoc),
+	BeginThunk(ExprLoc),
+	FinalizeThunk,
+
 	And(CodeLocOffset),
 	Or(CodeLocOffset),
 	LogImp(CodeLocOffset),
@@ -26,14 +30,13 @@ pub enum OpCode {
 	If(CodeLocOffset),
 
 	CreateAttrSet,
-	InitAttrExpr(ExprLoc),
+	SetAttr,
 	FinalizeAttrSetRec,
-	FinalizeAttrSet,
 
 	CreateList(usize),
-	AppendList(ExprLoc),
+	AppendList,
 
-	Apply(ExprLoc),
+	Apply,
 
 	LoadLambda(LambdaId),
 	LoadStr(StrId),
