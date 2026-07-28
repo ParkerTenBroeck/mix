@@ -1,6 +1,8 @@
 use crate::{
 	bytecode::CodePos,
-	runtime::{eval::NativeLambdaStateBox, scope::Scope, thunk::Thunk},
+	runtime::{
+		eval::NativeLambdaStateBox, lazy::LazyValue, scope::Scope, thunk::Thunk, value::Value,
+	},
 };
 
 #[derive(Clone, Copy, Debug)]
@@ -12,49 +14,40 @@ pub enum DeepKind {
 }
 
 #[derive(Debug)]
-pub struct EvalFrame {
+pub struct ByteCodeFrame {
 	pub pos: CodePos,
 	pub scope: Scope,
 }
 
-pub enum FrameKind {
-	Function {
-		eval: EvalFrame,
-	},
-	Thunk {
-		eval: EvalFrame,
-		thunk: Thunk,
-	},
-	Deep {
-		pos: Option<CodePos>,
-		remaining: usize,
-	},
-	Native {
-		state: NativeLambdaStateBox,
-		name: std::borrow::Cow<'static, str>,
-	},
+pub struct NativeFrame {
+	pub state: NativeLambdaStateBox,
+	pub name: std::borrow::Cow<'static, str>,
 }
 
-impl std::fmt::Debug for FrameKind {
+impl std::fmt::Debug for NativeFrame {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		match self {
-			Self::Function { eval } => f.debug_struct("Function").field("eval", eval).finish(),
-			Self::Thunk { eval, thunk } => f
-				.debug_struct("Thunk")
-				.field("eval", eval)
-				.field("thunk", thunk)
-				.finish(),
-			Self::Deep { pos, remaining } => f
-				.debug_struct("Deep")
-				.field("pos", pos)
-				.field("remaining", remaining)
-				.finish(),
-			Self::Native { state, name } => f.debug_struct("Native").field("name", name).finish(),
-		}
+		f.debug_tuple("NativeFrame").field(&self.name).finish()
 	}
+}
+
+#[derive(Debug)]
+pub enum FrameKind {
+	ByteCode(ByteCodeFrame),
+	Native(NativeFrame),
 }
 
 #[derive(Debug)]
 pub struct Frame {
 	pub kind: FrameKind,
+	pub thunk: Option<Thunk>,
+	pub deep: bool,
+}
+impl Frame {
+	pub fn new(kind: FrameKind) -> Self {
+		Self {
+			kind,
+			thunk: None,
+			deep: false,
+		}
+	}
 }

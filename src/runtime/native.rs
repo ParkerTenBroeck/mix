@@ -6,6 +6,7 @@ use crate::runtime::{
 	Runtime,
 	eval::{EvalError, NativeCtx, NativeLambdaAsync, NativeLambdaDyn, NativeLambdaResult},
 	lazy::LazyValue,
+	thunk::Thunk,
 	value::{List, Value},
 };
 
@@ -121,7 +122,7 @@ impl NativeLambdaAsync for MkList<LazyValue> {
 		for i in 0..len {
 			ctx.fule().await;
 
-			let element = LazyValue::apply(func.clone(), i.into()); // ctx.eval_call_func(func.clone(), i).await?;
+			let element = Thunk::application(func.clone(), i.into()); // ctx.eval_call_func(func.clone(), i).await?;
 			list.get_mut().push_back(element.into());
 		}
 

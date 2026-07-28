@@ -1,23 +1,24 @@
 mod attr;
 mod binop;
+mod bytecode;
+mod deep;
 mod error;
 mod frame;
+mod fule;
 mod func;
 mod native;
+mod thunk;
 
 pub use error::*;
 pub use frame::*;
-
+pub use fule::*;
 pub use native::*;
-
-use std::num::NonZeroUsize;
+pub use thunk::*;
 
 use crate::{
 	bytecode::OpCode,
 	runtime::{
 		LazyValue, Runtime, Value,
-		lazy::LazyValueKind,
-		thunk::Thunk,
 		trace::ErrorTrace,
 		value::{AttrSet, Lambda, List, StringKind, ValueType},
 	},
@@ -29,30 +30,10 @@ pub struct Evaluator {
 	pub frames: Vec<Frame>,
 }
 
-pub struct Fule(Option<NonZeroUsize>);
-
-impl Fule {
-	pub fn unlimited() -> Self {
-		Self(None)
-	}
-
-	pub fn limited(amount: usize) -> Self {
-		Self(Some(NonZeroUsize::new(amount.saturating_add(1))).unwrap())
-	}
-
-	pub fn fule(&mut self) -> bool {
-		match self.0 {
-			None => true,
-			Some(ammount) => {
-				if let Some(fule) = NonZeroUsize::new(ammount.get() - 1) {
-					self.0 = Some(fule);
-					true
-				} else {
-					false
-				}
-			}
-		}
-	}
+enum EvalStep {
+	Pending,
+	Ret,
+	BeginFrame(Frame),
 }
 
 impl Evaluator {
@@ -65,9 +46,9 @@ impl Evaluator {
 			local: Default::default(),
 			frames: vec![],
 		};
-		match myself.local.eval_lazy(runtime, thunk).unwrap() {
-			EvalResult::Value(value) => myself.local.value_stack.push(value),
-			EvalResult::Frame(frame) => myself.frames.push(frame),
+		match myself.local.eval_lazy(runtime, thunk, deep).unwrap() {
+			ThunkResult::Value(value) => myself.local.value_stack.push(value),
+			ThunkResult::Frame(frame) => myself.frames.push(frame),
 		}
 		Ok(myself)
 	}
@@ -92,34 +73,27 @@ impl Evaluator {
 			};
 
 			let res = match &mut frame.kind {
-				FrameKind::Function { eval } => {
-					self.local.run_bytecode(runtime, eval, &mut fule)?
-				}
-				FrameKind::Thunk { eval, thunk } => {
-					let res = self.local.run_bytecode(runtime, eval, &mut fule)?;
-					if matches!(res, ByteCodeStep::Ret) {
-						thunk.eval_end(self.local.peek_value()?, false).unwrap();
-					}
-					res
-				}
-				FrameKind::Native { state, name } => {
+				FrameKind::ByteCode(frame) => self.local.run_bytecode(runtime, frame, &mut fule)?,
+				FrameKind::Native(frame) => {
 					self.local
-						.poll_native_lambda(runtime, &mut fule, state.as_mut())?
-				}
-				FrameKind::Deep { pos, remaining } => {
-					todo!()
+						.poll_native_lambda(runtime, &mut fule, frame.state.as_mut())?
 				}
 			};
 
+			if let Some(thunk) = &frame.thunk
+				&& matches!(res, EvalStep::Ret)
+			{
+				thunk.eval_end(self.local.peek_value()?).unwrap();
+			}
+
 			match res {
-				// might want to error on this
-				ByteCodeStep::Pending if !fule.fule() => return Ok(None),
-				ByteCodeStep::Pending => {}
-				ByteCodeStep::Ret if self.frames.len() == 1 => {
+				EvalStep::Pending if !fule.fule() => return Ok(None),
+				EvalStep::Pending => {}
+				EvalStep::Ret if self.frames.len() == 1 => {
 					return Ok(Some(self.local.pop_value()?));
 				}
-				ByteCodeStep::Ret => _ = self.pop_frame()?,
-				ByteCodeStep::BeginFrame(frame) => {
+				EvalStep::Ret => _ = self.pop_frame()?,
+				EvalStep::BeginFrame(frame) => {
 					self.begin_frame(frame)?;
 				}
 			}
@@ -181,315 +155,5 @@ impl LocalEvaluator {
 		self.thunk_stack
 			.pop()
 			.ok_or(EvalError::ByteCode("thunk stack"))
-	}
-}
-
-enum ByteCodeStep {
-	Pending,
-	Ret,
-	BeginFrame(Frame),
-}
-
-pub enum EvalResult {
-	Value(Value),
-	Frame(Frame),
-}
-
-impl LocalEvaluator {
-	fn run_bytecode(
-		&mut self,
-		runtime: &mut Runtime,
-		frame: &mut EvalFrame,
-		fule: &mut Fule,
-	) -> Result<ByteCodeStep, EvalError> {
-		while fule.fule() {
-			let res = self.step_bytecode(runtime, frame)?;
-			if !matches!(res, ByteCodeStep::Pending) {
-				return Ok(res);
-			}
-		}
-		Ok(ByteCodeStep::Pending)
-	}
-
-	fn eval_lazy(
-		&mut self,
-		runtime: &mut Runtime,
-		thunk: LazyValue,
-	) -> Result<EvalResult, EvalError> {
-		match thunk.try_get_value() {
-			LazyValueKind::Thunk(thunk) => {
-				let (pos, scope) = thunk.eval_begin().map_err(EvalError::ThunkEval)?;
-
-				return Ok(EvalResult::Frame(Frame {
-					kind: FrameKind::Thunk {
-						eval: EvalFrame { pos, scope },
-						thunk,
-					},
-				}));
-			}
-			LazyValueKind::Apply(application) => {
-				match self.apply(runtime, application.0, application.1)? {
-					func::ApplicationResult::Value(value) => Ok(EvalResult::Value(value)),
-					func::ApplicationResult::Frame(frame) => Ok(EvalResult::Frame(frame)),
-				}
-			}
-			LazyValueKind::Value(value) => Ok(EvalResult::Value(value)),
-		}
-	}
-
-	fn step_bytecode(
-		&mut self,
-		runtime: &mut Runtime,
-		frame: &mut EvalFrame,
-	) -> Result<ByteCodeStep, EvalError> {
-		use crate::bytecode::OpCode;
-
-		let Some((op, mut next_pos)) = runtime.program.get(frame.pos) else {
-			return Err(EvalError::ByteCode("instruction pointer overran bytecode")).into();
-		};
-
-		match op {
-			OpCode::Add => {
-				let rhs = self.pop_value()?;
-				let lhs = self.pop_value()?;
-				let result = Self::checked_add(lhs, rhs)?;
-				self.push_value(result)?;
-			}
-			OpCode::Sub => {
-				let rhs = self.pop_value()?;
-				let lhs = self.pop_value()?;
-				let result = Self::checked_sub(lhs, rhs)?;
-				self.push_value(result)?;
-			}
-			OpCode::Mul => {
-				let rhs = self.pop_value()?;
-				let lhs = self.pop_value()?;
-				let result = Self::checked_mul(lhs, rhs)?;
-				self.push_value(result)?;
-			}
-			OpCode::Div => {
-				let rhs = self.pop_value()?;
-				let lhs = self.pop_value()?;
-				let result = Self::checked_div(lhs, rhs)?;
-				self.push_value(result)?;
-			}
-			OpCode::Rem => {
-				let rhs = self.pop_value()?;
-				let lhs = self.pop_value()?;
-				let result = Self::checked_rem(lhs, rhs)?;
-				self.push_value(result)?;
-			}
-			op @ (OpCode::Eq | OpCode::Ne) => {
-				let rhs = self.pop_value()?;
-				let lhs = self.pop_value()?;
-				let result = Self::binop_eq(op, lhs, rhs)?;
-				self.push_value(result)?;
-			}
-			op @ (OpCode::Lt | OpCode::Lte | OpCode::Gt | OpCode::Gte) => {
-				let rhs = self.pop_value()?;
-				let lhs = self.pop_value()?;
-				let result = Self::binop_cmp(op, lhs, rhs)?;
-				self.push_value(result)?;
-			}
-			OpCode::Not => {
-				let result = match self.pop_value()? {
-					Value::Bool(bool) => Value::Bool(!bool),
-					other => {
-						return Err(EvalError::TypeMismatch {
-							expected: ValueType::Bool,
-							got: other.ty(),
-						});
-					}
-				};
-				self.push_value(result)?;
-			}
-			OpCode::Neg => {
-				let result = match self.pop_value()? {
-					Value::Int(int) => Value::Int(-int),
-					Value::Float(float) => Value::Float(-float),
-					other => {
-						return Err(EvalError::TypeMismatch {
-							expected: ValueType::Number,
-							got: other.ty(),
-						});
-					}
-				};
-				self.push_value(result)?;
-			}
-
-			op @ (OpCode::And(rhs) | OpCode::Or(rhs) | OpCode::LogImp(rhs)) => {
-				let lhs = self.pop_bool()?;
-				let result = match op {
-					OpCode::And(_) if !lhs => Some(false),
-					OpCode::Or(_) if lhs => Some(true),
-					OpCode::LogImp(_) if !lhs => Some(true),
-					_ => None,
-				};
-				if let Some(result) = result {
-					next_pos = next_pos + rhs;
-					self.push_value(Value::Bool(result))?;
-				}
-			}
-
-			OpCode::If(else_off) => {
-				let cond = self.pop_bool()?;
-				if !cond {
-					next_pos = next_pos + else_off;
-				}
-			}
-			OpCode::Branch(offset) => next_pos = next_pos + offset,
-
-			OpCode::CreateAttrSet => {
-				self.value_stack.push(Value::AttrSet(AttrSet::default()));
-			}
-			OpCode::InitAttrExpr(expr) => {
-				let name = self.pop_string()?;
-				let mut attrset = self.pop_attrset()?;
-
-				attrset
-					.get_mut()
-					.insert(name, Thunk::construct_begin(expr).into());
-				self.push_value(Value::AttrSet(attrset))?;
-			}
-			op @ (OpCode::FinalizeAttrSetRec | OpCode::FinalizeAttrSet) => {
-				let attrset = self.pop_attrset()?;
-				let scope = if op == OpCode::FinalizeAttrSetRec {
-					let mut scope = frame.scope.clone();
-					for (name, value) in attrset.iter() {
-						scope.bind(name.clone(), value.clone());
-					}
-					scope
-				} else {
-					frame.scope.clone()
-				};
-
-				for element in attrset.values() {
-					// ignore result as some values might have already been finalized (inherited from elsewhere)
-					_ = element.construct_end(scope.clone());
-				}
-				self.push_value(Value::AttrSet(attrset))?;
-			}
-			OpCode::CreateList(capacity) => {
-				self.push_value(Value::List(List::with_capacity(capacity)))?
-			}
-			OpCode::AppendList(expr) => {
-				let mut list = self.pop_list()?;
-				list.get_mut()
-					.push_back(LazyValue::uneval(expr, frame.scope.clone()));
-				self.push_value(Value::List(list))?;
-			}
-			OpCode::Apply(arg_pos) => {
-				let func = self.pop_value()?;
-				let arg = Thunk::uneval_with_scope(arg_pos, frame.scope.clone()).into();
-				let res = self.apply(runtime, func, arg)?;
-				match res {
-					func::ApplicationResult::Value(value) => self.push_value(value)?,
-					func::ApplicationResult::Frame(next_frame) => {
-						frame.pos = next_pos;
-						return Ok(ByteCodeStep::BeginFrame(next_frame));
-					}
-				}
-			}
-			OpCode::LoadLambda(lambda_id) => {
-				let lambda = Lambda::Lambda {
-					scope: frame.scope.clone(),
-					lambda: lambda_id,
-				};
-				self.push_value(Value::Lambda(lambda))?;
-			}
-			OpCode::LoadStr(str) => self.push_value(Value::String(runtime.program.get_str(str)))?,
-			OpCode::LoadInt(int) => self.push_value(Value::Int(int))?,
-			OpCode::LoadFloat(float) => self.push_value(Value::Float(float))?,
-			OpCode::LoadBool(bool) => self.push_value(Value::Bool(bool))?,
-
-			OpCode::HasAttr => {
-				let name = self.pop_string()?;
-				let attrset = self.pop_attrset()?;
-				self.push_value(Value::Bool(attrset.get(&name).is_some()))?;
-			}
-			OpCode::GetAttr => {
-				let index = self.pop_value()?;
-				let indexing = self.pop_value()?;
-				let lazy = Self::get_attr(&indexing, &index)?;
-
-				if let Some(lazy) = lazy {
-					self.push_thunk(lazy)?;
-				} else {
-					let idx = match index {
-						Value::Bool(bool) => format!("{bool}"),
-						Value::Int(int) => format!("{int}"),
-						Value::Float(float) => format!("{float}"),
-						Value::String(str) => format!("{str:?}"),
-						Value::Path(path_buf) => path_buf.display().to_string(),
-						other => other.ty().to_string(),
-					};
-					return Err(EvalError::MissingAttr(
-						format!("attr {idx} not found for {}", indexing.ty()).into(),
-					));
-				}
-			}
-			OpCode::GetAttrOr(else_off) => {
-				let index = self.pop_value()?;
-				let indexing = self.pop_value()?;
-				let lazy = Self::get_attr(&indexing, &index).ok().flatten();
-				if let Some(lazy) = lazy {
-					self.thunk_stack.push(lazy);
-				} else {
-					next_pos = next_pos + else_off;
-				}
-			}
-			OpCode::EvalThunk => {
-				let lazy = self.pop_thunk()?;
-
-				match self.eval_lazy(runtime, lazy)? {
-					EvalResult::Value(value) => self.push_value(value)?,
-					EvalResult::Frame(next_frame) => {
-						frame.pos = next_pos;
-						return Ok(ByteCodeStep::BeginFrame(next_frame));
-					}
-				}
-			}
-			OpCode::BindThunkScope => {
-				let attr = self.pop_string()?;
-				let thunk = self.pop_thunk()?;
-				frame.scope.bind(attr, thunk);
-			}
-			OpCode::BindValueScope => {
-				let attr = self.pop_string()?;
-				let value = self.pop_value()?;
-				frame.scope.bind(attr, value.into());
-			}
-
-			OpCode::LoadScope => {
-				let name = self.pop_string()?;
-				let Some(lazy) = frame.scope.resolve(&name) else {
-					return Err(EvalError::MissingBinding(
-						format!("failed to resolve {name:?}").into(),
-					));
-				};
-				self.push_thunk(lazy.clone())?;
-			}
-
-			OpCode::PopV => _ = self.pop_value()?,
-			OpCode::DupV => {
-				let value = self.pop_value()?;
-				self.push_value(value.clone())?;
-				self.push_value(value)?;
-			}
-
-			OpCode::PopT => _ = self.pop_thunk()?,
-			OpCode::DupT => {
-				let thunk = self.pop_thunk()?;
-				self.push_thunk(thunk.clone())?;
-				self.push_thunk(thunk)?;
-			}
-
-			OpCode::Ret => {
-				return Ok(ByteCodeStep::Ret);
-			}
-		}
-		frame.pos = next_pos;
-
-		Ok(ByteCodeStep::Pending)
 	}
 }

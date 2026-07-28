@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 
-use crate::runtime::{thunk::ThunkEvalErr, value::ValueType};
+use crate::runtime::{eval::ThunkEvalErr, value::ValueType};
 
 #[derive(Debug)]
 pub enum EvalError {

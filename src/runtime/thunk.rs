@@ -1,47 +1,36 @@
-use std::cell::RefCell;
+use std::{cell::RefCell, fmt};
 
 use dumpster::{Trace, unsync::Gc};
 
 use crate::{
 	bytecode::CodePos,
-	runtime::{scope::Scope, value::Value},
+	runtime::{lazy::LazyValue, scope::Scope, value::Value},
 };
 
 #[derive(Clone, Trace)]
-pub struct Thunk(Gc<RefCell<ThunkState>>);
+pub struct Thunk(pub(super) Gc<RefCell<ThunkState>>);
 
 #[derive(Clone, Debug)]
 pub enum ThunkSnapshot {
 	Constructing(CodePos),
-	Unevaluated(CodePos),
+	Expr(CodePos),
+	Apply(Value, LazyValue),
 	Evaluating,
 	Evaluated(Value),
 }
 
-impl std::fmt::Debug for Thunk {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		match self.0.try_borrow().ok().as_ref() {
-			Some(state) => match &**state {
-				ThunkState::Constructing(_) => f.debug_tuple("Thunk::Constructing").finish(),
-				ThunkState::Unevaluated(_, _) => f.debug_tuple("Thunk::Unevalated").finish(),
-				ThunkState::Evaluating => f.debug_tuple("Thunk::Evaluating").finish(),
-				ThunkState::Evaluated(value) => {
-					f.debug_tuple("Thunk::Evaluated").field(value).finish()
-				}
-				ThunkState::DeepEvaluated(value) => {
-					f.debug_tuple("Thunk::DeepEvaluated").field(value).finish()
-				}
-			},
-			None => f.debug_tuple("Thunk").finish(),
-		}
-	}
-}
+impl fmt::Debug for Thunk {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		let mut debug = f.debug_struct("Thunk");
+		debug.field("id", &format_args!("{:#x}", self.id()));
 
-#[derive(Debug)]
-pub enum ThunkEvalErr {
-	InfiniteRec,
-	NotConstructed,
-	AlreadyEvaluated,
+		match self.0.try_borrow() {
+			Ok(state) => debug.field("state", &*state),
+			Err(_) => debug.field("state", &"<borrowed>"),
+		};
+
+		debug.finish()
+	}
 }
 
 impl Thunk {
@@ -54,85 +43,63 @@ impl Thunk {
 	}
 
 	pub fn uneval_with_scope(pos: CodePos, scope: Scope) -> Self {
-		Self(Gc::new(RefCell::new(ThunkState::Unevaluated(pos, scope))))
+		Self(Gc::new(RefCell::new(ThunkState::Expr(pos, scope))))
+	}
+
+	pub fn application(func: Value, arg: LazyValue) -> Self {
+		Self(Gc::new(RefCell::new(ThunkState::Apply(func, arg))))
 	}
 
 	pub fn construct_end(&self, scope: Scope) -> bool {
 		let mut inner = self.0.borrow_mut();
 		match &*inner {
 			ThunkState::Constructing(code_loc) => {
-				*inner = ThunkState::Unevaluated(*code_loc, scope);
+				*inner = ThunkState::Expr(*code_loc, scope);
 				true
 			}
 			_ => false,
 		}
 	}
 
-	pub fn eval_begin(&self) -> Result<(CodePos, Scope), ThunkEvalErr> {
-		let mut inner = self.0.borrow_mut();
-		match &*inner {
-			ThunkState::Unevaluated(code_loc, scope) => {
-				let ret = Ok((*code_loc, scope.clone()));
-				*inner = ThunkState::Evaluating;
-				ret
-			}
-			ThunkState::Constructing(_) => Err(ThunkEvalErr::NotConstructed),
-			ThunkState::Evaluating => Err(ThunkEvalErr::InfiniteRec),
-			ThunkState::Evaluated(_) => Err(ThunkEvalErr::AlreadyEvaluated),
-			ThunkState::DeepEvaluated(_) => Err(ThunkEvalErr::AlreadyEvaluated),
-		}
-	}
-
-	pub fn eval_end(&self, value: Value, deep: bool) -> Result<(), ()> {
+	pub fn eval_end(&self, value: Value) -> Result<(), ()> {
 		let mut inner = self.0.borrow_mut();
 		match &*inner {
 			ThunkState::Evaluating => {
-				if deep {
-					*inner = ThunkState::DeepEvaluated(value);
-				} else {
-					*inner = ThunkState::Evaluated(value);
-				}
+				*inner = ThunkState::Evaluated(value);
 				Ok(())
 			}
 			_ => Err(()),
 		}
 	}
 
-	pub fn is_deeply_evaluated(&self) -> bool {
-		matches!(&*self.0.borrow(), ThunkState::DeepEvaluated(_))
-	}
-
 	pub fn uneval(code: CodePos, scope: Scope) -> Self {
-		Self(Gc::new(RefCell::new(ThunkState::Unevaluated(code, scope))))
+		Self(Gc::new(RefCell::new(ThunkState::Expr(code, scope))))
 	}
 
 	pub fn get_value(&self) -> Option<Value> {
 		match &*self.0.try_borrow().ok()? {
-			ThunkState::Constructing(_) => None,
-			ThunkState::Unevaluated(_, _) => None,
-			ThunkState::Evaluating => None,
 			ThunkState::Evaluated(value) => Some(value.clone()),
-			ThunkState::DeepEvaluated(value) => Some(value.clone()),
+			_ => None,
 		}
 	}
 
 	pub fn snapshot(&self) -> Option<ThunkSnapshot> {
 		Some(match &*self.0.try_borrow().ok()? {
 			ThunkState::Constructing(pos) => ThunkSnapshot::Constructing(*pos),
-			ThunkState::Unevaluated(pos, _) => ThunkSnapshot::Unevaluated(*pos),
+			ThunkState::Expr(pos, _) => ThunkSnapshot::Expr(*pos),
+			ThunkState::Apply(func, arg) => ThunkSnapshot::Apply(func.clone(), arg.clone()),
 			ThunkState::Evaluating => ThunkSnapshot::Evaluating,
 			ThunkState::Evaluated(value) => ThunkSnapshot::Evaluated(value.clone()),
-			ThunkState::DeepEvaluated(value) => ThunkSnapshot::Evaluated(value.clone()),
 		})
 	}
 
 	pub fn is_evaluating(&self) -> Option<bool> {
 		match &*self.0.try_borrow().ok()? {
 			ThunkState::Constructing(_) => Some(false),
-			ThunkState::Unevaluated(_, _) => Some(false),
+			ThunkState::Expr(_, _) => Some(false),
+			ThunkState::Apply(_, _) => Some(false),
 			ThunkState::Evaluating => Some(true),
 			ThunkState::Evaluated(_) => Some(false),
-			ThunkState::DeepEvaluated(_) => Some(false),
 		}
 	}
 }
@@ -140,20 +107,27 @@ impl Thunk {
 #[derive(Clone, Trace)]
 pub enum ThunkState {
 	Constructing(CodePos),
-	Unevaluated(CodePos, Scope),
+	Expr(CodePos, Scope),
+
+	Apply(Value, LazyValue),
+
 	Evaluating,
+
 	Evaluated(Value),
-	DeepEvaluated(Value),
 }
 
-impl std::fmt::Debug for ThunkState {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Debug for ThunkState {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
-			Self::Constructing(arg0) => f.debug_tuple("Constructing").field(arg0).finish(),
-			Self::Unevaluated(arg0, _) => f.debug_tuple("Unevaluated").field(arg0).finish(),
-			Self::Evaluating => write!(f, "Evaluating"),
-			Self::Evaluated(arg0) => f.debug_tuple("Evaluated").field(arg0).finish(),
-			Self::DeepEvaluated(arg0) => f.debug_tuple("DeepEvaluated").field(arg0).finish(),
+			Self::Constructing(pos) => f.debug_tuple("Constructing").field(pos).finish(),
+			Self::Expr(pos, _) => f.debug_tuple("Expr").field(pos).finish(),
+			Self::Apply(func, arg) => f
+				.debug_struct("Apply")
+				.field("function", func)
+				.field("argument", arg)
+				.finish(),
+			Self::Evaluating => f.write_str("Evaluating"),
+			Self::Evaluated(value) => f.debug_tuple("Evaluated").field(value).finish(),
 		}
 	}
 }

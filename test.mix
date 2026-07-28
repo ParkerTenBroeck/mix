@@ -1,6 +1,6 @@
-builtins.mkList (x: x*x) 10
+#builtins.mkList (x: x*x) 10
 
-#{
-#    fib = x : if x <= 0 then 0 else if x == 1 then 1 else fib (x-1) + fib (x-2);
-#    res = fib 10;
-#}.res
+{
+    fib = x : if x <= 0 then 0 else if x == 1 then 1 else fib (x-1) + fib (x-2);
+    res = fib 10;
+}.res

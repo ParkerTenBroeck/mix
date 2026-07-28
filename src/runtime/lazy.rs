@@ -64,16 +64,11 @@ impl LazyValue {
 	pub fn uneval(code: CodePos, scope: Scope) -> Self {
 		LazyValueKind::Thunk(Thunk::uneval(code, scope)).into()
 	}
-
-	pub fn apply(func: Value, arg: LazyValue) -> Self {
-		LazyValueKind::Apply(Box::new((func, arg))).into()
-	}
 }
 
 #[derive(Clone, Debug, Trace)]
 pub enum LazyValueKind {
 	Thunk(Thunk),
-	Apply(Box<(Value, LazyValue)>),
 	Value(Value),
 }
 

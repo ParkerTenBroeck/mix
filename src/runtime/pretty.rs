@@ -76,13 +76,7 @@ impl<'rt> PrettyPrinter<'rt> {
 
 	fn count_lazy(&mut self, value: &LazyValue, seen: &mut HashSet<ObjectKey>) {
 		match value.try_get_value() {
-			// Err(thunk) => self.count_thunk(&thunk, seen),
-			// Ok(value) => self.count_value(&value, seen),
 			super::lazy::LazyValueKind::Thunk(thunk) => self.count_thunk(&thunk, seen),
-			super::lazy::LazyValueKind::Apply(app) => {
-				self.count_value(&app.0, seen);
-				self.count_lazy(&app.1, seen);
-			}
 			super::lazy::LazyValueKind::Value(value) => self.count_value(&value, seen),
 		}
 	}
@@ -93,8 +87,16 @@ impl<'rt> PrettyPrinter<'rt> {
 		if !seen.insert(key) {
 			return;
 		}
-		if let Some(ThunkSnapshot::Evaluated(value)) = thunk.snapshot() {
-			self.count_value(&value, seen);
+		match thunk.snapshot() {
+			Some(ThunkSnapshot::Apply(func, arg)) => {
+				self.count_value(&func, seen);
+				self.count_lazy(&arg, seen);
+			}
+			Some(ThunkSnapshot::Evaluated(value)) => self.count_value(&value, seen),
+			Some(
+				ThunkSnapshot::Constructing(_) | ThunkSnapshot::Expr(_) | ThunkSnapshot::Evaluating,
+			)
+			| None => {}
 		}
 	}
 
@@ -136,13 +138,6 @@ impl<'rt> PrettyPrinter<'rt> {
 	fn render_lazy_inner(&mut self, value: &LazyValue, indent: usize) -> String {
 		match value.try_get_value() {
 			super::lazy::LazyValueKind::Thunk(thunk) => self.render_thunk(&thunk, indent),
-			super::lazy::LazyValueKind::Apply(app) => {
-				format!(
-					"{} |> {}",
-					self.render_value_inner(&app.0, indent),
-					self.render_lazy_inner(&app.1, indent)
-				)
-			}
 			super::lazy::LazyValueKind::Value(value) => self.render_value_inner(&value, indent),
 		}
 	}
@@ -215,7 +210,9 @@ impl<'rt> PrettyPrinter<'rt> {
 					"<<lambda>>".into()
 				}
 			}
-			Lambda::NativeLambda(native_lambda) => todo!(),
+			Lambda::NativeLambda(native_lambda) => {
+				format!("<<native {}>>", native_lambda.identifier())
+			}
 		}
 	}
 
@@ -237,11 +234,16 @@ impl<'rt> PrettyPrinter<'rt> {
 					self.format_code_pos(pos)
 				)
 			}
-			ThunkSnapshot::Unevaluated(pos) => {
+			ThunkSnapshot::Expr(pos) => {
 				format!(
 					"{prefix}<<thunk unevaluated {}>>",
 					self.format_code_pos(pos)
 				)
+			}
+			ThunkSnapshot::Apply(func, arg) => {
+				let func = self.render_value_inner(&func, indent);
+				let arg = self.render_lazy_inner(&arg, indent);
+				format!("{prefix}{func} |> {arg}")
 			}
 			ThunkSnapshot::Evaluating => format!("{prefix}<<thunk evaluating>>"),
 			ThunkSnapshot::Evaluated(value) => {

@@ -2,7 +2,7 @@ use crate::{
 	files::{Files, Span},
 	runtime::{
 		Runtime,
-		eval::{EvalError, Evaluator, FrameKind as EvalFrameKind},
+		eval::{EvalError, Evaluator, FrameKind as EvalFrameKind, ThunkEvalErr},
 	},
 };
 
@@ -29,9 +29,9 @@ impl ErrorTrace {
             EvalError::Internal(message) => format!("internal runtime error: {message}"),
             EvalError::ByteCode(message) => format!("bytecode error: {message}"),
             EvalError::ThunkEval(thunk_eval_err) => match thunk_eval_err {
-                crate::runtime::thunk::ThunkEvalErr::InfiniteRec => "infinite recursion",
-                crate::runtime::thunk::ThunkEvalErr::NotConstructed => "trying to access partially constructed value.. this indicates an error in the compiler/bytecode/runtime",
-                crate::runtime::thunk::ThunkEvalErr::AlreadyEvaluated => "trying to re-evaluate already evaluated thunk.. this indicates an error in the compiler/bytecode/runtime",
+                ThunkEvalErr::InfiniteRec => "infinite recursion",
+                ThunkEvalErr::NotConstructed => "trying to access partially constructed value.. this indicates an error in the compiler/bytecode/runtime",
+                ThunkEvalErr::AlreadyEvaluated => "trying to re-evaluate already evaluated thunk.. this indicates an error in the compiler/bytecode/runtime",
             }.into(),
         };
 

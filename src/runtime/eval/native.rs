@@ -2,7 +2,9 @@ use dumpster::Trace;
 
 use crate::runtime::{
 	Runtime,
-	eval::{ByteCodeStep, EvalError, Frame, Fule, LocalEvaluator, func::ApplicationResult},
+	eval::{
+		EvalError, EvalStep, FrameKind, Fule, LocalEvaluator, NativeFrame, func::ApplyResult,
+	},
 	lazy::{LazyValue, LazyValueKind},
 	native::NativeLambda,
 	thunk::Thunk,
@@ -13,21 +15,20 @@ use std::{borrow::Cow, marker::PhantomData, pin::Pin, task::*};
 
 impl LocalEvaluator {
 	pub(super) fn apply_native_lambda(
-		&mut self,
 		runtime: &mut Runtime,
 		lambda: NativeLambda,
 		arg: LazyValue,
-	) -> Result<ApplicationResult, EvalError> {
+	) -> Result<ApplyResult, EvalError> {
 		match lambda.begin(runtime, arg) {
-			NativeLambdaResult::Value(value) => Ok(ApplicationResult::Value(value)),
+			NativeLambdaResult::Value(value) => Ok(ApplyResult::Value(value)),
 			NativeLambdaResult::Err(err) => Err(err),
 
-			NativeLambdaResult::Future(future) => Ok(ApplicationResult::Frame(Frame {
-				kind: crate::runtime::eval::FrameKind::Native {
+			NativeLambdaResult::Future(future) => {
+				Ok(ApplyResult::Frame(FrameKind::Native(NativeFrame {
 					state: future,
 					name: lambda.identifier(),
-				},
-			})),
+				})))
+			}
 		}
 	}
 
@@ -36,7 +37,7 @@ impl LocalEvaluator {
 		runtime: &mut Runtime,
 		fule: &mut Fule,
 		mut future: NativeLambdaStateRef<'_>,
-	) -> Result<ByteCodeStep, EvalError> {
+	) -> Result<EvalStep, EvalError> {
 		let mut data = NativeCtxData {
 			evaluator: self,
 			runtime,
@@ -51,38 +52,22 @@ impl LocalEvaluator {
 		match future.as_mut().poll(&mut ctx) {
 			Poll::Ready(result) => {
 				self.push_value(result?)?;
-				return Ok(ByteCodeStep::Ret);
+				return Ok(EvalStep::Ret);
 			}
 			Poll::Pending => {}
 		}
 
-		match data.to_eval {
-			ToEval::Thunk(thunk) => {
-				let (pos, scope) = thunk.eval_begin().map_err(EvalError::ThunkEval)?;
-				Ok(ByteCodeStep::BeginFrame(Frame {
-					kind: super::FrameKind::Thunk {
-						eval: super::EvalFrame { pos, scope },
-						thunk,
-					},
-				}))
+		let res = match data.to_eval {
+			ToEval::Thunk(thunk, deep) => self.eval_thunk(runtime, thunk, deep)?,
+			ToEval::Func(func, arg, deep) => self.eval_apply(runtime, func, arg, None, deep)?,
+			ToEval::None => return Ok(EvalStep::Pending),
+		};
+		match res {
+			super::ThunkResult::Value(value) => {
+				self.push_value(value)?;
+				Ok(EvalStep::Ret)
 			}
-			ToEval::ThunkDeep(thunk) => {
-				let (pos, scope) = thunk.eval_begin().map_err(EvalError::ThunkEval)?;
-				Ok(ByteCodeStep::BeginFrame(Frame {
-					kind: super::FrameKind::Thunk {
-						eval: super::EvalFrame { pos, scope },
-						thunk,
-					},
-				}))
-			}
-			ToEval::Func(func, arg) => match self.apply(runtime, func, arg)? {
-				ApplicationResult::Value(value) => {
-					self.push_value(value)?;
-					Ok(ByteCodeStep::Pending)
-				}
-				ApplicationResult::Frame(frame) => Ok(ByteCodeStep::BeginFrame(frame)),
-			},
-			ToEval::None => Ok(ByteCodeStep::Pending),
+			super::ThunkResult::Frame(frame) => Ok(EvalStep::BeginFrame(frame)),
 		}
 	}
 }
@@ -110,9 +95,8 @@ impl Future for PendingOnce {
 static VTABLE: RawWakerVTable = RawWakerVTable::new(|_| panic!(), |_| {}, |_| {}, |_| {});
 
 enum ToEval {
-	Thunk(Thunk),
-	ThunkDeep(Thunk),
-	Func(Value, LazyValue),
+	Thunk(Thunk, bool),
+	Func(Value, LazyValue, bool),
 	None,
 }
 
@@ -152,14 +136,13 @@ impl NativeCtx {
 		match arg.try_get_value() {
 			LazyValueKind::Value(value) => Ok(value),
 			LazyValueKind::Thunk(thunk) => self.eval(thunk).await,
-			LazyValueKind::Apply(app) => self.eval_call_func(app.0, app.1).await,
 		}
 	}
 
 	pub async fn eval(&mut self, thunk: Thunk) -> Result<Value, EvalError> {
 		Self::with(|ctx| {
 			debug_assert!(matches!(ctx.to_eval, ToEval::None));
-			ctx.to_eval = ToEval::Thunk(thunk);
+			ctx.to_eval = ToEval::Thunk(thunk, false);
 		})
 		.await;
 		pending_once().await;
@@ -169,21 +152,21 @@ impl NativeCtx {
 	pub async fn eval_deep(&mut self, thunk: Thunk) -> Result<Value, EvalError> {
 		Self::with(|ctx| {
 			debug_assert!(matches!(ctx.to_eval, ToEval::None));
-			ctx.to_eval = ToEval::ThunkDeep(thunk);
+			ctx.to_eval = ToEval::Thunk(thunk, true);
 		})
 		.await;
 		pending_once().await;
 		Self::with(|ctx| ctx.evaluator.pop_value()).await
 	}
 
-	pub async fn eval_call_func(
+	pub async fn eval_apply(
 		&mut self,
 		func: impl Into<Value>,
 		arg: impl Into<LazyValue>,
 	) -> Result<Value, EvalError> {
 		Self::with(|ctx| {
 			debug_assert!(matches!(ctx.to_eval, ToEval::None));
-			ctx.to_eval = ToEval::Func(func.into(), arg.into());
+			ctx.to_eval = ToEval::Func(func.into(), arg.into(), false);
 		})
 		.await;
 		pending_once().await;
