@@ -261,12 +261,9 @@ impl<'a> ByteCodeBuilder<'a> {
 		self.emit(OpCode::BeginThunk(loc))
 	}
 
-	pub fn emit_finalize_thunk(
-		&mut self,
-	) -> &mut Self{
+	pub fn emit_finalize_thunk(&mut self) -> &mut Self {
 		self.emit(OpCode::FinalizeThunk)
 	}
-
 
 	pub fn emit_apply(&mut self) -> &mut Self {
 		self.emit(OpCode::Apply)

@@ -159,11 +159,11 @@ impl Compiler {
 
 				for attr in &attrs.static_attrs {
 					if let Some(value) = &attr.0.value {
-						builder.emit_load_str(attr.0.name.0);
-						let expr = builder
-							.emit_expr(value.1, |builder| _ = self.compile_expr(builder, value));
 						builder
-							.emit(OpCode::BeginThunk(expr.1))
+							.emit_load_str(attr.0.name.0)
+							.emit_begin_thunk(value.1, |builder| {
+								_ = self.compile_expr(builder, value)
+							})
 							.emit(OpCode::SetAttr);
 					} else {
 						todo!()
@@ -172,11 +172,10 @@ impl Compiler {
 
 				for attr in &attrs.dynamic_attrs {
 					if let Some(value) = &attr.0.value {
-						self.compile_attr_part(builder, &attr.0.part);
-						let expr = builder
-							.emit_expr(value.1, |builder| _ = self.compile_expr(builder, value));
-						builder
-							.emit(OpCode::BeginThunk(expr.1))
+						self.compile_attr_part(builder, &attr.0.part)
+							.emit_begin_thunk(value.1, |builder| {
+								_ = self.compile_expr(builder, value)
+							})
 							.emit(OpCode::SetAttr);
 					} else {
 						todo!()
@@ -188,7 +187,9 @@ impl Compiler {
 				builder.emit_create_list(elements.len());
 				for element in elements {
 					builder
-						.emit_create_thunk(element.1, |builder| _ = self.compile_expr(builder, element))
+						.emit_create_thunk(element.1, |builder| {
+							_ = self.compile_expr(builder, element)
+						})
 						.emit(OpCode::AppendList);
 				}
 			}
@@ -198,7 +199,7 @@ impl Compiler {
 					builder.emit_get_attr_or(
 						path.0.parts.iter().map(|part| {
 							|builder: &mut ByteCodeBuilder<'_>| {
-								self.compile_attr_part(builder, part)
+								self.compile_attr_part(builder, part);
 							}
 						}),
 						|builder| _ = builder.emit(OpCode::EvalThunk),
@@ -215,7 +216,9 @@ impl Compiler {
 				self.compile_expr(builder, expr);
 				builder.emit_get_attr_or(
 					path.0.parts.iter().map(|part| {
-						|builder: &mut ByteCodeBuilder<'_>| self.compile_attr_part(builder, part)
+						|builder: &mut ByteCodeBuilder<'_>| {
+							_ = self.compile_attr_part(builder, part)
+						}
 					}),
 					|builder| _ = builder.emit(OpCode::PopT).emit_load_bool(true),
 					|builder| _ = builder.emit_load_bool(false),
@@ -237,15 +240,17 @@ impl Compiler {
 		builder
 	}
 
-	fn compile_attr_part(&self, builder: &mut ByteCodeBuilder<'_>, part: &Node<mir::AttrPathPart>) {
+	fn compile_attr_part<'a, 'b>(
+		&self,
+		builder: &'b mut ByteCodeBuilder<'a>,
+		part: &Node<mir::AttrPathPart>,
+	) -> &'b mut ByteCodeBuilder<'a> {
 		match &part.0 {
-			mir::AttrPathPart::Ident(ident) => {
-				builder.emit_load_str(ident);
-			}
+			mir::AttrPathPart::Ident(ident) => builder.emit_load_str(ident),
 			mir::AttrPathPart::Expr(expr) => {
-				_ = self.compile_expr(builder, &Node(expr.clone(), part.1));
+				self.compile_expr(builder, &Node(expr.clone(), part.1))
 			}
-			mir::AttrPathPart::Num(i64) => _ = builder.emit_load_int(*i64),
+			mir::AttrPathPart::Num(i64) => builder.emit_load_int(*i64),
 		}
 	}
 }
