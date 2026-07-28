@@ -1,7 +1,7 @@
 use regex::Replacer;
 
 use crate::{
-	bytecode::{ByteCodeBuilder, CodePos, OpCode, ProgramBuilder},
+	bytecode::{ByteCodeBuilder, CodePos, ExprLoc, OpCode, ProgramBuilder},
 	files::Node,
 	mir,
 };
@@ -79,6 +79,34 @@ impl Compiler {
 		pattern: &Node<mir::Pattern<'_>>,
 	) {
 		self.compile_lambda_pattern_rec(builder, pattern);
+	}
+
+	fn compile_maybe_thunk<'a, 'b>(
+		&self,
+		builder: &'b mut ByteCodeBuilder<'a>,
+		expr: &Node<mir::Expr<'_>>,
+	) -> Option<ExprLoc> {
+		let Node(ast_expr, span) = expr;
+		match ast_expr {
+			mir::Expr::Lambda(_)
+			| mir::Expr::Ident(_)
+			| mir::Expr::Num(_)
+			| mir::Expr::Str(_)
+			| mir::Expr::List { .. } => {
+				self.compile_expr(builder, expr).emit(OpCode::UnEvalValue);
+				None
+			},
+			mir::Expr::AttrSet(attr_set) if !attr_set.scope && attr_set.dynamic_attrs.is_empty() && attr_set.dynamic_inherit.is_empty() => {
+				self.compile_expr(builder, expr).emit(OpCode::UnEvalValue);
+				None
+			}
+			
+			_ => Some(
+				builder
+					.emit_expr(*span, |builder| _ = self.compile_expr(builder, expr))
+					.1,
+			),
+		}
 	}
 
 	fn compile_expr<'a, 'b>(

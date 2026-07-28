@@ -71,12 +71,12 @@ pub enum Associativity {
 impl BinOp {
 	pub fn precedence(&self) -> u32 {
 		match self {
-			BinOp::Add => 20 - 4,
-			BinOp::Sub => 20 - 4,
-
 			BinOp::Mul => 20 - 3,
 			BinOp::Div => 20 - 3,
 			BinOp::Rem => 20 - 3,
+
+			BinOp::Add => 20 - 4,
+			BinOp::Sub => 20 - 4,
 
 			BinOp::Lt => 20 - 6,
 			BinOp::Lte => 20 - 6,

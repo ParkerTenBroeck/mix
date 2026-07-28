@@ -41,12 +41,12 @@ impl<'a> Parser<'a> {
 			};
 			self.next();
 			let op = Node(op, self.last.1);
-			let min_prec = min_prec
-				+ match op.0.associativity() {
-					ast::Associativity::Left => 1,
-					ast::Associativity::None => 0,
-					ast::Associativity::Right => 0,
-				};
+			let min_prec = op.0.precedence()
+				+ min_prec + match op.0.associativity() {
+				ast::Associativity::Left => 1,
+				ast::Associativity::None => 0,
+				ast::Associativity::Right => 0,
+			};
 			let rhs = Box::new(self.parse_expr_binop(min_prec));
 			let span = lhs.1.merge(self.last.1);
 			lhs = Node(
