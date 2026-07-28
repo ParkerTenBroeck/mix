@@ -1,3 +1,5 @@
+use regex::Replacer;
+
 use crate::{
 	bytecode::{ByteCodeBuilder, CodePos, OpCode, ProgramBuilder},
 	files::Node,
@@ -157,31 +159,61 @@ impl Compiler {
 			mir::Expr::AttrSet(attrs) => {
 				builder.emit(OpCode::CreateAttrSet);
 
+				let emit_attr = |builder: &mut ByteCodeBuilder<'_>, value: &Node<mir::Expr<'_>>| {
+					builder
+						.pred_or_emit(
+							attrs.scope,
+							|builder| {
+								_ = builder.emit_begin_thunk(value.1, |builder| {
+									_ = self.compile_expr(builder, &value)
+								})
+							},
+							|builder| {
+								_ = builder.emit_create_thunk(value.1, |builder| {
+									_ = self.compile_expr(builder, &value)
+								})
+							},
+						)
+						.pred_emit(attrs.scope, |builder| {
+							_ = builder
+								.emit(OpCode::DupT)
+								.emit(OpCode::DupT)
+								.emit(OpCode::DupV)
+								.emit(OpCode::BindThunkScope)
+						})
+						.emit(OpCode::SetAttr);
+				};
+
 				for attr in &attrs.static_attrs {
-					if let Some(value) = &attr.0.value {
-						builder
-							.emit_load_str(attr.0.name.0)
-							.emit_begin_thunk(value.1, |builder| {
-								_ = self.compile_expr(builder, value)
-							})
-							.emit(OpCode::SetAttr);
-					} else {
-						todo!()
-					}
+					builder.emit_load_str(attr.0.name.0);
+					emit_attr(builder, &attr.0.value);
 				}
 
 				for attr in &attrs.dynamic_attrs {
-					if let Some(value) = &attr.0.value {
-						self.compile_attr_part(builder, &attr.0.part)
-							.emit_begin_thunk(value.1, |builder| {
-								_ = self.compile_expr(builder, value)
-							})
-							.emit(OpCode::SetAttr);
-					} else {
-						todo!()
+					self.compile_attr_part(builder, &attr.0.part);
+					emit_attr(builder, &attr.0.value);
+				}
+
+				for attr in &attrs.static_inherit {
+					builder
+						.emit_load_str(attr.0)
+						.emit(OpCode::DupV)
+						.emit(OpCode::LoadScope)
+						.emit(OpCode::SetAttr);
+				}
+
+				for attr in &attrs.dynamic_attrs {
+					self.compile_attr_part(builder, &attr.0.part)
+						.emit(OpCode::DupV)
+						.emit(OpCode::LoadScope)
+						.emit(OpCode::SetAttr);
+				}
+
+				if attrs.scope {
+					for _ in 0..(attrs.static_attrs.len() + attrs.dynamic_attrs.len()) {
+						builder.emit(OpCode::FinalizeThunk).emit(OpCode::PopT);
 					}
 				}
-				builder.emit(OpCode::FinalizeAttrSetRec);
 			}
 			mir::Expr::List { elements } => {
 				builder.emit_create_list(elements.len());

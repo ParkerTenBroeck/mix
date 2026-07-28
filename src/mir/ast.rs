@@ -126,20 +126,25 @@ pub struct LetBinding<'a> {
 
 #[derive(Clone, Debug, Default)]
 pub struct AttrSet<'a> {
+	pub scope: bool,
+
 	pub static_attrs: Vec<Node<StaticAttr<'a>>>,
 	pub dynamic_attrs: Vec<Node<DynamicAttr<'a>>>,
+
+	pub static_inherit: Vec<Node<&'a str>>,
+	pub dynamic_inherit: Vec<Node<&'a str>>,
 }
 
 #[derive(Clone, Debug)]
 pub struct StaticAttr<'a> {
 	pub name: Node<&'a str>,
-	pub value: Option<Node<Expr<'a>>>,
+	pub value: Node<Expr<'a>>,
 }
 
 #[derive(Clone, Debug)]
 pub struct DynamicAttr<'a> {
 	pub part: Node<AttrPathPart<'a>>,
-	pub value: Option<Node<Expr<'a>>>,
+	pub value: Node<Expr<'a>>,
 }
 
 #[derive(Clone, Debug)]

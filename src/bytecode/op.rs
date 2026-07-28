@@ -31,7 +31,6 @@ pub enum OpCode {
 
 	CreateAttrSet,
 	SetAttr,
-	FinalizeAttrSetRec,
 
 	CreateList(usize),
 	AppendList,

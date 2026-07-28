@@ -255,7 +255,7 @@ impl<'a> ByteCodeBuilder<'a> {
 	pub fn emit_begin_thunk(
 		&mut self,
 		span: Span,
-		expr: impl FnOnce(&mut ByteCodeBuilder),
+		expr: impl FnOnce(&mut ByteCodeBuilder<'_>),
 	) -> &mut Self {
 		let loc = self.emit_expr(span, expr).1;
 		self.emit(OpCode::BeginThunk(loc))
@@ -277,6 +277,32 @@ impl<'a> ByteCodeBuilder<'a> {
 		let id = self.emit_str(str);
 		self.emit(OpCode::LoadStr(id))
 	}
+
+	pub fn pred_emit<T>(
+		&mut self,
+		pred: bool,
+		func: impl FnOnce(&mut ByteCodeBuilder) -> T,
+	) -> &mut Self {
+		if pred {
+			func(self);
+		}
+		self
+	}
+
+	pub fn pred_or_emit(
+		&mut self,
+		pred: bool,
+		then: impl FnOnce(&mut ByteCodeBuilder<'_>),
+		el: impl FnOnce(&mut ByteCodeBuilder<'_>),
+	) -> &mut Self {
+		if pred {
+			then(self);
+		} else {
+			el(self);
+		}
+		self
+	}
+
 	pub fn emit_load_int(&mut self, int: i64) -> &mut Self {
 		self.emit(OpCode::LoadInt(int))
 	}

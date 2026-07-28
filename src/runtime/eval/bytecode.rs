@@ -134,21 +134,6 @@ impl LocalEvaluator {
 				attrset.get_mut().insert(name, value);
 				self.push_value(Value::AttrSet(attrset))?;
 			}
-			OpCode::FinalizeAttrSetRec => {
-				let attrset = self.pop_attrset()?;
-
-				let mut scope = frame.scope.clone();
-				for (name, value) in attrset.iter() {
-					// bind values into scope
-					scope.bind(name.clone(), value.clone());
-				}
-				for value in attrset.values() {
-					// ignore result as some values might have already been finalized (inherited from elsewhere)
-					_ = value.construct_end(scope.clone());
-				}
-
-				self.push_value(Value::AttrSet(attrset))?;
-			}
 			OpCode::CreateList(capacity) => {
 				self.push_value(Value::List(List::with_capacity(capacity)))?
 			}

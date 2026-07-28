@@ -194,19 +194,26 @@ impl MirLowerer {
 	fn lower_attr_set<'a>(&mut self, attrs: Vec<Node<ast::Attr<'a>>>) -> mir::AttrSet<'a> {
 		let mut static_attrs = Vec::new();
 		let mut dynamic_attrs = Vec::new();
+		let mut static_inherit = Vec::new();
 
 		for attr in attrs {
 			let lowered_value = attr.0.value.map(|value| self.lower_expr(value));
 			if let Some(parts) = self.static_attr_parts(&attr.0.path) {
-				self.insert_static_attr(
-					&mut static_attrs,
-					&parts,
-					lowered_value,
-					attr.1,
-					String::new(),
-				);
+				if lowered_value.is_none() && parts.len() == 1 {
+					static_inherit.push(parts[0]);
+				} else {
+					self.insert_static_attr(
+						&mut static_attrs,
+						&parts,
+						lowered_value,
+						attr.1,
+						String::new(),
+					);
+				}
 			} else {
-				dynamic_attrs.push(self.lower_dynamic_attr(attr.0.path, lowered_value, attr.1));
+				if lowered_value.is_some() {
+					dynamic_attrs.push(self.lower_dynamic_attr(attr.0.path, lowered_value, attr.1));
+				}
 			}
 		}
 
@@ -216,13 +223,16 @@ impl MirLowerer {
 				.map(|attr| self.finish_static_attr(attr))
 				.collect(),
 			dynamic_attrs,
+			scope: true,
+			static_inherit,
+			dynamic_inherit: vec![],
 		}
 	}
 
 	fn finish_static_attr<'a>(&mut self, attr: StaticAttrBuilder<'a>) -> Node<mir::StaticAttr<'a>> {
 		let value = if !attr.children.is_empty() {
 			let span = attr.full_span;
-			Some(Node(
+			Node(
 				mir::Expr::AttrSet(mir::AttrSet {
 					static_attrs: attr
 						.children
@@ -230,11 +240,16 @@ impl MirLowerer {
 						.map(|child| self.finish_static_attr(child))
 						.collect(),
 					dynamic_attrs: vec![],
+					scope: true,
+					static_inherit: vec![],
+					dynamic_inherit: vec![],
 				}),
 				span,
-			))
+			)
 		} else {
-			attr.value
+			attr.value.unwrap_or_else(|| {
+				Node(mir::Expr::AttrSet(mir::AttrSet::default()), attr.full_span)
+			})
 		};
 
 		Node(
@@ -261,12 +276,22 @@ impl MirLowerer {
 				mir::Expr::AttrSet(mir::AttrSet {
 					static_attrs: vec![],
 					dynamic_attrs: vec![self.build_dynamic_attr(parts, value, span)],
+					scope: false,
+					static_inherit: vec![],
+					dynamic_inherit: vec![],
 				}),
 				span,
 			))
 		};
 
-		Node(mir::DynamicAttr { part, value }, span)
+		Node(
+			mir::DynamicAttr {
+				part,
+				value: value
+					.unwrap_or_else(|| Node(mir::Expr::AttrSet(mir::AttrSet::default()), span)),
+			},
+			span,
+		)
 	}
 
 	fn build_dynamic_attr<'a>(
@@ -283,12 +308,22 @@ impl MirLowerer {
 				mir::Expr::AttrSet(mir::AttrSet {
 					static_attrs: vec![],
 					dynamic_attrs: vec![self.build_dynamic_attr(parts, value, span)],
+					scope: false,
+					static_inherit: vec![],
+					dynamic_inherit: vec![],
 				}),
 				span,
 			))
 		};
 
-		Node(mir::DynamicAttr { part, value }, span)
+		Node(
+			mir::DynamicAttr {
+				part,
+				value: value
+					.unwrap_or_else(|| Node(mir::Expr::AttrSet(mir::AttrSet::default()), span)),
+			},
+			span,
+		)
 	}
 
 	fn lower_attr_path<'a>(&mut self, path: Node<ast::AttrPath<'a>>) -> Node<mir::AttrPath<'a>> {

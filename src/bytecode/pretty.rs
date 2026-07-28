@@ -110,7 +110,6 @@ fn format_op(program: &Program, pos: CodePos, op: OpCode) -> String {
 		OpCode::If(offset) => format_jump("If", pos, offset),
 		OpCode::CreateAttrSet => "CreateAttrSet".into(),
 		OpCode::SetAttr => "SetAttr".into(),
-		OpCode::FinalizeAttrSetRec => "FinalizeAttrSetRec".into(),
 		OpCode::CreateList(capacity) => format!("CreateList {capacity}"),
 		OpCode::AppendList => "AppendList".into(),
 		OpCode::Apply => "Apply".into(),
