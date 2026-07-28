@@ -1,7 +1,7 @@
 use crate::{
 	bytecode::CodePos,
 	runtime::{
-		eval::NativeLambdaStateBox, lazy::LazyValue, scope::Scope, thunk::Thunk, value::Value,
+		eval::NativeLambdaStateBox, scope::Scope, thunk::Thunk,
 	},
 };
 

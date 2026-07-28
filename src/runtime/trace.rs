@@ -2,7 +2,7 @@ use crate::{
 	files::{Files, Span},
 	runtime::{
 		Runtime,
-		eval::{EvalError, Evaluator, FrameKind as EvalFrameKind, ThunkEvalErr},
+		eval::{EvalError, Evaluator, ThunkEvalErr},
 	},
 };
 
@@ -103,10 +103,6 @@ impl ErrorTrace {
 			)
 			.collect();
 
-		// stack.push(FrameInfo {
-		// 	span: runtime.program.find_pos(eval.frame.pos),
-		// 	kind: map_frame_kind(&eval.frame.meta),
-		// });
 
 		stack
 	}
