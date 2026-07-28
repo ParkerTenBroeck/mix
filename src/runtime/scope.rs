@@ -3,7 +3,7 @@ use dumpster::{Trace, unsync::Gc};
 use crate::runtime::{
 	LazyValue,
 	value::{AttrSet, AttrSetInner, Lambda, StringKind, Value},
-	value::{Match, MkList, NativeLambda},
+	value::{NativeLambda},
 };
 
 #[derive(Clone, Default, Debug, Trace)]
@@ -61,6 +61,8 @@ impl ScopeBuilder {
 	}
 
 	pub fn with_builtins(mut self) -> Self {
+		use super::builtin::*;
+		
 		let mut builtins = AttrSet::new();
 		builtins.get_mut().insert(
 			StringKind::String("match".into()),
