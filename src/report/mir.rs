@@ -48,3 +48,20 @@ impl From<DuplicatePatternBindingError> for Report {
 		}
 	}
 }
+
+#[derive(Clone, Debug)]
+pub struct UnsupportedLetBindingError {
+	pub span: Span,
+}
+
+impl From<UnsupportedLetBindingError> for Report {
+	fn from(err: UnsupportedLetBindingError) -> Self {
+		Self {
+			level: ReportLevel::Error,
+			span: err.span,
+			title: Cow::Borrowed("unsupported let binding pattern"),
+			annotations: vec![ReportAnnotation::primary(err.span)],
+			helps: vec![],
+		}
+	}
+}

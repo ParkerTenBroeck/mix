@@ -27,7 +27,9 @@ impl<'a> Token<'a> {
 			Token::LBrace => true,
 			Token::LBrack => true,
 			Token::If => true,
+			Token::Let => true,
 
+			Token::In => false,
 			Token::Comment(_) => false,
 			Token::RParen => false,
 			Token::RBrace => false,

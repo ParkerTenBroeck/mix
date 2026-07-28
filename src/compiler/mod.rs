@@ -1,5 +1,3 @@
-use regex::Replacer;
-
 use crate::{
 	bytecode::{ByteCodeBuilder, CodePos, ExprLoc, OpCode, ProgramBuilder},
 	files::Node,
@@ -88,19 +86,22 @@ impl Compiler {
 	) -> Option<ExprLoc> {
 		let Node(ast_expr, span) = expr;
 		match ast_expr {
-			mir::Expr::Lambda(_)
-			| mir::Expr::Ident(_)
-			| mir::Expr::Num(_)
-			| mir::Expr::Str(_)
-			| mir::Expr::List { .. } => {
-				self.compile_expr(builder, expr).emit(OpCode::UnEvalValue);
+			mir::Expr::Ident(ident) => {
+				builder.emit_load_str(ident).emit(OpCode::LoadScope);
 				None
-			},
-			mir::Expr::AttrSet(attr_set) if !attr_set.scope && attr_set.dynamic_attrs.is_empty() && attr_set.dynamic_inherit.is_empty() => {
+			}
+			// mir::Expr::Lambda(_)
+			mir::Expr::Num(_) | mir::Expr::Str(_) | mir::Expr::List { .. } => {
 				self.compile_expr(builder, expr).emit(OpCode::UnEvalValue);
 				None
 			}
-			
+			mir::Expr::AttrSet(attr_set)
+				if attr_set.dynamic_attrs.is_empty() && attr_set.dynamic_inherit.is_empty() =>
+			{
+				self.compile_expr(builder, expr).emit(OpCode::UnEvalValue);
+				None
+			}
+
 			_ => Some(
 				builder
 					.emit_expr(*span, |builder| _ = self.compile_expr(builder, expr))
@@ -125,7 +126,7 @@ impl Compiler {
 			}
 			mir::Expr::FuncApp { func, arg } => {
 				self.compile_expr(builder, func)
-					.emit_create_thunk(arg.1, |builder| _ = self.compile_expr(builder, arg))
+					.maybe_emit_create_thunk(|builder| self.compile_maybe_thunk(builder, arg))
 					.emit_apply();
 			}
 			mir::Expr::IfThenElse {
@@ -183,43 +184,53 @@ impl Compiler {
 					mir::UnOp::Not => builder.emit_not(),
 				};
 			}
-			mir::Expr::Let { bindings } => todo!(),
+			mir::Expr::Let { bindings, expr } => {
+				let mut to_finalize = 0;
+				builder.emit(OpCode::EnterScope);
+				for binding in bindings {
+					builder.maybe_emit_begin_thunk(
+						|builder| self.compile_maybe_thunk(builder, &binding.value),
+						|builder| {
+							to_finalize += 1;
+							builder.emit(OpCode::DupT);
+						},
+						|_| {},
+					);
+					let name =
+						binding.id.0.binding.expect(
+							"non-identifier let bindings must be rejected during MIR analysis",
+						);
+					builder.emit_load_str(name.0);
+					builder.emit(OpCode::BindThunkScope);
+				}
+
+				for _ in 0..to_finalize {
+					builder.emit(OpCode::FinalizeThunk).emit(OpCode::PopT);
+				}
+
+				self.compile_expr(builder, expr);
+				builder.emit(OpCode::LeaveScope);
+			}
 			mir::Expr::AttrSet(attrs) => {
 				builder.emit(OpCode::CreateAttrSet);
 
-				let emit_attr = |builder: &mut ByteCodeBuilder<'_>, value: &Node<mir::Expr<'_>>| {
-					builder
-						.pred_or_emit(
-							attrs.scope,
-							|builder| {
-								_ = builder.emit_begin_thunk(value.1, |builder| {
-									_ = self.compile_expr(builder, &value)
-								})
-							},
-							|builder| {
-								_ = builder.emit_create_thunk(value.1, |builder| {
-									_ = self.compile_expr(builder, &value)
-								})
-							},
-						)
-						.pred_emit(attrs.scope, |builder| {
-							_ = builder
-								.emit(OpCode::DupT)
-								.emit(OpCode::DupT)
-								.emit(OpCode::DupV)
-								.emit(OpCode::BindThunkScope)
-						})
-						.emit(OpCode::SetAttr);
-				};
-
 				for attr in &attrs.static_attrs {
 					builder.emit_load_str(attr.0.name.0);
-					emit_attr(builder, &attr.0.value);
+
+					builder
+						.maybe_emit_create_thunk(|builder| {
+							self.compile_maybe_thunk(builder, &attr.0.value)
+						})
+						.emit(OpCode::SetAttr);
 				}
 
 				for attr in &attrs.dynamic_attrs {
 					self.compile_attr_part(builder, &attr.0.part);
-					emit_attr(builder, &attr.0.value);
+					builder
+						.maybe_emit_create_thunk(|builder| {
+							self.compile_maybe_thunk(builder, &attr.0.value)
+						})
+						.emit(OpCode::SetAttr);
 				}
 
 				for attr in &attrs.static_inherit {
@@ -236,19 +247,13 @@ impl Compiler {
 						.emit(OpCode::LoadScope)
 						.emit(OpCode::SetAttr);
 				}
-
-				if attrs.scope {
-					for _ in 0..(attrs.static_attrs.len() + attrs.dynamic_attrs.len()) {
-						builder.emit(OpCode::FinalizeThunk).emit(OpCode::PopT);
-					}
-				}
 			}
 			mir::Expr::List { elements } => {
 				builder.emit_create_list(elements.len());
 				for element in elements {
 					builder
-						.emit_create_thunk(element.1, |builder| {
-							_ = self.compile_expr(builder, element)
+						.maybe_emit_create_thunk(|builder| {
+							self.compile_maybe_thunk(builder, element)
 						})
 						.emit(OpCode::AppendList);
 				}
@@ -312,5 +317,54 @@ impl Compiler {
 			}
 			mir::AttrPathPart::Num(i64) => builder.emit_load_int(*i64),
 		}
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use std::rc::Rc;
+
+	use crate::{
+		files::FileLoader,
+		runtime::{Runtime, scope::ScopeBuilder},
+	};
+
+	fn eval(source: &str) -> Result<crate::runtime::value::Value, String> {
+		let source: Rc<String> = Rc::new(source.to_owned());
+		let loader = FileLoader::new(move |_| Ok(source.clone()));
+		let scope = ScopeBuilder::new()
+			.with("false", false)
+			.with("true", true)
+			.bottom();
+		let mut runtime = Runtime::new(loader, scope);
+		let lazy = runtime
+			.load("test.mix")
+			.map_err(|_| "source failed to compile".to_owned())?;
+		match runtime.eval(lazy, true) {
+			Ok(value) => Ok(value),
+			Err(error) => Err(error.render(&runtime)),
+		}
+	}
+
+	#[test]
+	fn let_bindings_share_a_recursive_scope() {
+		let value = eval("let x = 1; y = x + 1 in y").unwrap();
+		assert_eq!(value.expect_int().unwrap(), 2);
+	}
+
+	#[test]
+	fn attrsets_do_not_bind_their_keys() {
+		assert!(eval("{ x = 1; y = x; }.y").is_err());
+	}
+
+	#[test]
+	fn duplicate_inherited_attr_is_rejected() {
+		assert!(eval("let x = 1 in { x; x = 2; }").is_err());
+	}
+
+	#[test]
+	fn non_identifier_let_bindings_are_rejected() {
+		assert!(eval("let { x } = { x = 1; } in x").is_err());
+		assert!(eval("let x :: int = 1 in x").is_err());
 	}
 }

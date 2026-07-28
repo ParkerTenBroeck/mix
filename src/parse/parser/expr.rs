@@ -208,6 +208,36 @@ impl<'a> Parser<'a> {
 					else_expr,
 				}
 			}
+			Token::Let => {
+				let mut bindings = Vec::new();
+
+				while !matches!(self.curr.0, Token::In | Token::Eof) {
+					let id = self.parse_pattern();
+					if !self.consume_if(Token::Assign) {
+						self.reports.emit(UnexpectedTokenExprError {
+							span: self.curr.1,
+							token: self.curr.0,
+							expected: Some(Token::Assign),
+						});
+					}
+					let value = self.parse_expr();
+					bindings.push(ast::LetBinding { id, value });
+
+					if !(self.consume_if(Token::Comma) || self.consume_if(Token::Semicolon)) {
+						break;
+					}
+				}
+
+				if !self.consume_if(Token::In) {
+					self.reports.emit(UnexpectedTokenExprError {
+						span: self.curr.1,
+						token: self.curr.0,
+						expected: Some(Token::In),
+					});
+				}
+				let expr = Box::new(self.parse_expr());
+				ast::Expr::Let { bindings, expr }
+			}
 			Token::Ident(ident) => ast::Expr::Ident(ident),
 			Token::Num(num) => self.parse_num(Some(num)),
 			Token::Dot => self.parse_num(None),

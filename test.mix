@@ -1,8 +1,12 @@
 #builtins.mkList (x: x*x) 10
 
-{
+
+let 
+
     add = x:y:x+y;
     mul = x:y:x*y;
+
+    #five = 2;
 
     res = 5
         |> add 2
@@ -13,4 +17,5 @@
 
     #fib = x : if x <= 0 then 0 else if x == 1 then 1 else fib (x-1) + fib (x-2);
     #res = fib 35;
-}.res
+
+in res

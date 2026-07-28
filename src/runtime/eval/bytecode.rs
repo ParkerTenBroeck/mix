@@ -256,6 +256,13 @@ impl LocalEvaluator {
 				};
 				self.push_thunk(lazy.clone())?;
 			}
+			OpCode::EnterScope => frame.scope = frame.scope.new_level(),
+			OpCode::LeaveScope => {
+				frame.scope = frame
+					.scope
+					.parent()
+					.ok_or(EvalError::ByteCode("attempted to leave the root scope"))?;
+			}
 
 			OpCode::PopV => _ = self.pop_value()?,
 			OpCode::DupV => {

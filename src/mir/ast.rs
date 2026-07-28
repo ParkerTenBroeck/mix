@@ -99,6 +99,7 @@ pub enum Expr<'a> {
 	},
 	Let {
 		bindings: Vec<LetBinding<'a>>,
+		expr: Box<Node<Expr<'a>>>,
 	},
 	AttrSet(AttrSet<'a>),
 	List {
@@ -126,8 +127,6 @@ pub struct LetBinding<'a> {
 
 #[derive(Clone, Debug, Default)]
 pub struct AttrSet<'a> {
-	pub scope: bool,
-
 	pub static_attrs: Vec<Node<StaticAttr<'a>>>,
 	pub dynamic_attrs: Vec<Node<DynamicAttr<'a>>>,
 

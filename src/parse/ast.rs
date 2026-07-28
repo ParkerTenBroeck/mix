@@ -165,6 +165,7 @@ pub enum Expr<'a> {
 	},
 	Let {
 		bindings: Vec<LetBinding<'a>>,
+		expr: Box<Node<Expr<'a>>>,
 	},
 	AttrSet {
 		attrs: Vec<Node<Attr<'a>>>,

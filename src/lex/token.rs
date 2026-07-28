@@ -16,6 +16,8 @@ pub enum Token<'a> {
 	If,
 	Then,
 	Else,
+	Let,
+	In,
 
 	Bang,
 	Percent,
@@ -95,6 +97,8 @@ impl<'a> std::fmt::Display for Token<'a> {
 			Token::If => write!(f, "if"),
 			Token::Then => write!(f, "then"),
 			Token::Else => write!(f, "else"),
+			Token::Let => write!(f, "let"),
+			Token::In => write!(f, "in"),
 			Token::Colon => write!(f, ":"),
 			Token::ColonColon => write!(f, "::"),
 			Token::Dot => write!(f, "."),

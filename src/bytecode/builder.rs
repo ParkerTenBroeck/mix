@@ -252,6 +252,16 @@ impl<'a> ByteCodeBuilder<'a> {
 		self.emit(OpCode::CreateThunk(loc))
 	}
 
+	pub fn maybe_emit_create_thunk(
+		&mut self,
+		expr: impl FnOnce(&mut ByteCodeBuilder) -> Option<CodePos>,
+	) -> &mut Self {
+		if let Some(loc) = expr(self) {
+			self.emit(OpCode::CreateThunk(loc));
+		}
+		self
+	}
+
 	pub fn emit_begin_thunk(
 		&mut self,
 		span: Span,
@@ -259,6 +269,21 @@ impl<'a> ByteCodeBuilder<'a> {
 	) -> &mut Self {
 		let loc = self.emit_expr(span, expr).1;
 		self.emit(OpCode::BeginThunk(loc))
+	}
+
+	pub fn maybe_emit_begin_thunk(
+		&mut self,
+		expr: impl FnOnce(&mut ByteCodeBuilder) -> Option<CodePos>,
+		thunk: impl FnOnce(&mut ByteCodeBuilder),
+		fake: impl FnOnce(&mut ByteCodeBuilder),
+	) -> &mut Self {
+		if let Some(loc) = expr(self) {
+			self.emit(OpCode::BeginThunk(loc));
+			thunk(self)
+		} else {
+			fake(self)
+		}
+		self
 	}
 
 	pub fn emit_finalize_thunk(&mut self) -> &mut Self {

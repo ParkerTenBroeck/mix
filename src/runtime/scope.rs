@@ -41,6 +41,10 @@ impl Scope {
 		Self::new_with(AttrSetInner::default(), self.clone())
 	}
 
+	pub fn parent(&self) -> Option<Scope> {
+		self.0.prev.clone()
+	}
+
 	pub fn bind(&mut self, ident: StringKind, value: LazyValue) -> Option<LazyValue> {
 		Gc::make_mut(&mut self.0).curr.insert(ident, value)
 	}

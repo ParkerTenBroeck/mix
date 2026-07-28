@@ -177,6 +177,8 @@ impl<'a> Lexer<'a> {
 					"if" => Token::If,
 					"then" => Token::Then,
 					"else" => Token::Else,
+					"let" => Token::Let,
+					"in" => Token::In,
 					_ => Token::Ident(str),
 				})
 			}

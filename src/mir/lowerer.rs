@@ -52,8 +52,9 @@ impl MirLowerer {
 				expr: Box::new(self.lower_expr(*expr)),
 				op: Node(self.lower_unop(op.0), op.1),
 			},
-			ast::Expr::Let { bindings } => mir::Expr::Let {
+			ast::Expr::Let { bindings, expr } => mir::Expr::Let {
 				bindings: self.lower_let_bindings(bindings),
+				expr: Box::new(self.lower_expr(*expr)),
 			},
 			ast::Expr::AttrSet { attrs } => mir::Expr::AttrSet(self.lower_attr_set(attrs)),
 			ast::Expr::List { elements } => mir::Expr::List {
@@ -200,15 +201,46 @@ impl MirLowerer {
 			let lowered_value = attr.0.value.map(|value| self.lower_expr(value));
 			if let Some(parts) = self.static_attr_parts(&attr.0.path) {
 				if lowered_value.is_none() && parts.len() == 1 {
-					static_inherit.push(parts[0]);
+					let inherited = parts[0];
+					let duplicate = static_attrs
+						.iter()
+						.find(|existing: &&StaticAttrBuilder<'a>| existing.name.0 == inherited.0)
+						.map(|existing| existing.full_span)
+						.or_else(|| {
+							static_inherit
+								.iter()
+								.find(|existing: &&Node<&'a str>| existing.0 == inherited.0)
+								.map(|existing| existing.1)
+						});
+
+					if let Some(first) = duplicate {
+						self.reports.emit(crate::report::mir::DuplicateAttrError {
+							span: inherited.1,
+							first,
+							name: inherited.0.to_owned().into(),
+						});
+					} else {
+						static_inherit.push(inherited);
+					}
 				} else {
-					self.insert_static_attr(
-						&mut static_attrs,
-						&parts,
-						lowered_value,
-						attr.1,
-						String::new(),
-					);
+					if let Some(first) = static_inherit
+						.iter()
+						.find(|existing| existing.0 == parts[0].0)
+					{
+						self.reports.emit(crate::report::mir::DuplicateAttrError {
+							span: parts[0].1,
+							first: first.1,
+							name: parts[0].0.to_owned().into(),
+						});
+					} else {
+						self.insert_static_attr(
+							&mut static_attrs,
+							&parts,
+							lowered_value,
+							attr.1,
+							String::new(),
+						);
+					}
 				}
 			} else {
 				if lowered_value.is_some() {
@@ -223,7 +255,6 @@ impl MirLowerer {
 				.map(|attr| self.finish_static_attr(attr))
 				.collect(),
 			dynamic_attrs,
-			scope: true,
 			static_inherit,
 			dynamic_inherit: vec![],
 		}
@@ -240,7 +271,6 @@ impl MirLowerer {
 						.map(|child| self.finish_static_attr(child))
 						.collect(),
 					dynamic_attrs: vec![],
-					scope: true,
 					static_inherit: vec![],
 					dynamic_inherit: vec![],
 				}),
@@ -276,7 +306,6 @@ impl MirLowerer {
 				mir::Expr::AttrSet(mir::AttrSet {
 					static_attrs: vec![],
 					dynamic_attrs: vec![self.build_dynamic_attr(parts, value, span)],
-					scope: false,
 					static_inherit: vec![],
 					dynamic_inherit: vec![],
 				}),
@@ -308,7 +337,6 @@ impl MirLowerer {
 				mir::Expr::AttrSet(mir::AttrSet {
 					static_attrs: vec![],
 					dynamic_attrs: vec![self.build_dynamic_attr(parts, value, span)],
-					scope: false,
 					static_inherit: vec![],
 					dynamic_inherit: vec![],
 				}),
