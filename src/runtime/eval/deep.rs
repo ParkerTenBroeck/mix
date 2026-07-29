@@ -1,8 +1,7 @@
 use crate::{
-	bytecode::CodePos,
 	runtime::{
 		eval::{
-			EvalError, Frame, FrameKind, LocalEvaluator, NativeCtx, NativeFrame, NativeLambdaAsync,
+			EvalError, Frame, FrameKind, LocalEvaluator, NativeCtx, NativeFrame,
 			NativePosKind, ThunkResult,
 		},
 		lazy::{LazyValue, LazyValueKind},

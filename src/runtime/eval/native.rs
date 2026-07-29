@@ -199,10 +199,6 @@ impl NativeCtx {
 	}
 }
 
-pub struct NativeLambdaFrame {
-	name: Cow<'static, str>,
-	state: NativeLambdaState,
-}
 pub type NativeLambdaState = dyn Future<Output = Result<Value, EvalError>>;
 pub type NativeLambdaStateBox = std::pin::Pin<Box<NativeLambdaState>>;
 pub type NativeLambdaStateRef<'a> = std::pin::Pin<&'a mut NativeLambdaState>;
