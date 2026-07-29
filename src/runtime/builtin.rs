@@ -3,9 +3,12 @@ use std::borrow::Cow;
 use dumpster::Trace;
 
 use crate::runtime::{
-	Runtime, eval::{EvalError, NativeCtx, NativeLambdaAsync, NativeLambdaDyn, NativeLambdaResult}, lazy::LazyValue, thunk::Thunk, value::{List, NativeLambda, Value},
+	Runtime,
+	eval::{EvalError, NativeCtx, NativeLambdaAsync, NativeLambdaDyn, NativeLambdaResult},
+	lazy::LazyValue,
+	thunk::Thunk,
+	value::{List, NativeLambda, Value},
 };
-
 
 #[derive(Clone)]
 pub struct Match<T>(T);

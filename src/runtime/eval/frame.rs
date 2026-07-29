@@ -17,9 +17,18 @@ pub struct ByteCodeFrame {
 	pub scope: Scope,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Default)]
+pub enum NativePosKind {
+	Value(CodePos),
+	Expr(CodePos),
+	#[default]
+	None,
+}
+
 pub struct NativeFrame {
 	pub state: NativeLambdaStateBox,
 	pub name: std::borrow::Cow<'static, str>,
+	pub pos: NativePosKind,
 }
 
 impl std::fmt::Debug for NativeFrame {

@@ -3,7 +3,7 @@ use crate::runtime::{
 	eval::{ByteCodeFrame, EvalError, Frame, FrameKind, LocalEvaluator, func::ApplyResult},
 	lazy::{LazyValue, LazyValueKind},
 	thunk::{Thunk, ThunkState},
-	value::Value,
+	value::{NativeLambda, Value},
 };
 
 #[derive(Debug)]
@@ -19,6 +19,19 @@ pub enum ThunkResult {
 }
 
 impl LocalEvaluator {
+	pub fn eval_value(
+		&mut self,
+		_: &mut Runtime,
+		value: Value,
+		deep: bool,
+	) -> Result<ThunkResult, EvalError> {
+		if !deep || value.deeply_evaluated() {
+			return Ok(ThunkResult::Value(value));
+		}
+
+		self.deep_eval_value(value)
+	}
+
 	pub fn eval_thunk(
 		&mut self,
 		runtime: &mut Runtime,
@@ -40,7 +53,7 @@ impl LocalEvaluator {
 			}
 			ThunkState::Constructing(_) => Err(EvalError::ThunkEval(ThunkEvalErr::NotConstructed)),
 			ThunkState::Evaluating => Err(EvalError::ThunkEval(ThunkEvalErr::InfiniteRec)),
-			ThunkState::Evaluated(value) => Ok(ThunkResult::Value(value.clone())),
+			ThunkState::Evaluated(value) => self.eval_value(runtime, value.clone(), deep),
 			ThunkState::Apply(func, arg) => {
 				let func = std::mem::replace(func, Value::Bool(false));
 				let arg = std::mem::replace(arg, Value::Bool(false).into());
@@ -60,7 +73,7 @@ impl LocalEvaluator {
 	) -> Result<ThunkResult, EvalError> {
 		let res = self.apply(runtime, func, arg)?;
 		match res {
-			ApplyResult::Value(value) => Ok(ThunkResult::Value(value)),
+			ApplyResult::Value(value) => self.eval_value(runtime, value, deep),
 			ApplyResult::Frame(kind) => Ok(ThunkResult::Frame(Frame { kind, thunk, deep })),
 		}
 	}
@@ -73,7 +86,7 @@ impl LocalEvaluator {
 	) -> Result<ThunkResult, EvalError> {
 		match thunk.try_get_value() {
 			LazyValueKind::Thunk(thunk) => self.eval_thunk(runtime, thunk, deep),
-			LazyValueKind::Value(value) => Ok(ThunkResult::Value(value)),
+			LazyValueKind::Value(value) => self.eval_value(runtime, value, deep),
 		}
 	}
 }

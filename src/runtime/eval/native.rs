@@ -1,12 +1,7 @@
 use dumpster::Trace;
 
 use crate::runtime::{
-	Runtime,
-	eval::{EvalError, EvalStep, FrameKind, Fule, LocalEvaluator, NativeFrame, func::ApplyResult},
-	lazy::{LazyValue, LazyValueKind},
-	thunk::Thunk,
-	value::NativeLambda,
-	value::Value,
+	Runtime, eval::{EvalError, EvalStep, FrameKind, Fule, LocalEvaluator, NativeFrame, NativePosKind, func::ApplyResult}, lazy::{LazyValue, LazyValueKind}, thunk::Thunk, value::{NativeLambda, Value},
 };
 
 use std::{borrow::Cow, marker::PhantomData, pin::Pin, task::*};
@@ -25,6 +20,7 @@ impl LocalEvaluator {
 				Ok(ApplyResult::Frame(FrameKind::Native(NativeFrame {
 					state: future,
 					name: lambda.identifier(),
+					pos: NativePosKind::None,
 				})))
 			}
 		}
@@ -59,6 +55,7 @@ impl LocalEvaluator {
 			ToEval::Thunk(thunk, deep) => self.eval_thunk(runtime, thunk, deep)?,
 			ToEval::Func(func, arg, deep) => self.eval_apply(runtime, func, arg, None, deep)?,
 			ToEval::None => return Ok(EvalStep::Pending),
+			ToEval::DeepValue(value) => self.deep_eval_value(value)?,
 		};
 		match res {
 			super::ThunkResult::Value(value) => {
@@ -95,6 +92,7 @@ static VTABLE: RawWakerVTable = RawWakerVTable::new(|_| panic!(), |_| {}, |_| {}
 enum ToEval {
 	Thunk(Thunk, bool),
 	Func(Value, LazyValue, bool),
+	DeepValue(Value),
 	None,
 }
 
@@ -107,6 +105,12 @@ struct NativeCtxData<'a> {
 }
 
 pub struct NativeCtx(PhantomData<*mut ()>);
+
+impl NativeCtx {
+	pub(super) fn get() -> NativeCtx {
+		NativeCtx(PhantomData)
+	}
+}
 
 impl NativeCtx {
 	async fn with<'a, T>(func: impl FnOnce(&'a mut NativeCtxData<'a>) -> T) -> T {
@@ -134,6 +138,22 @@ impl NativeCtx {
 		match arg.try_get_value() {
 			LazyValueKind::Value(value) => Ok(value),
 			LazyValueKind::Thunk(thunk) => self.eval(thunk).await,
+		}
+	}
+
+	pub async fn eval_lazy_deep(&mut self, arg: LazyValue) -> Result<Value, EvalError> {
+		match arg.try_get_value() {
+			LazyValueKind::Value(value) if value.deeply_evaluated() => Ok(value),
+			LazyValueKind::Value(value) => {
+				Self::with(|ctx| {
+					debug_assert!(matches!(ctx.to_eval, ToEval::None));
+					ctx.to_eval = ToEval::DeepValue(value);
+				})
+				.await;
+				pending_once().await;
+				Self::with(|ctx| ctx.evaluator.pop_value()).await
+			}
+			LazyValueKind::Thunk(thunk) => self.eval_deep(thunk).await,
 		}
 	}
 
@@ -203,7 +223,7 @@ impl<T: NativeLambdaAsync> NativeLambdaDyn for T {
 	}
 
 	fn begin(&self, _: &mut Runtime, arg: LazyValue) -> NativeLambdaResult {
-		let fut = NativeLambdaAsync::apply(self.clone(), NativeCtx(PhantomData), arg);
+		let fut = NativeLambdaAsync::apply(self.clone(), NativeCtx::get(), arg);
 		NativeLambdaResult::Future(Box::pin(fut))
 	}
 }

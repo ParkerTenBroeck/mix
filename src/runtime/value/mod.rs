@@ -14,7 +14,7 @@ pub use ty::*;
 
 use std::{fmt::Debug, path::PathBuf};
 
-use crate::runtime::eval::EvalError;
+use crate::{bytecode::CodePos, runtime::eval::EvalError};
 
 use dumpster::Trace;
 
@@ -41,6 +41,35 @@ impl Value {
 			Value::List(_) => ValueType::List,
 			Value::AttrSet(_) => ValueType::AttrSet,
 			Value::Lambda(_) => ValueType::Lambda,
+		}
+	}
+
+	/// Only set this once the value has been deeply evaluated.
+	/// Aka once all elements are also deeply evaluated
+	///
+	/// doing otherwise will cause incorrect (but not fatal or undefined) behavior when the VM tries to deeply evaluate it
+	pub fn set_deeply_evaluated(&self) {
+		match self {
+			Value::List(list) => list.set_deeply_evaluated(),
+			Value::AttrSet(attr_set) => attr_set.set_deeply_evaluated(),
+			_ => {}
+		}
+	}
+
+	pub fn deeply_evaluated(&self) -> bool {
+		match self {
+			Value::List(list) => list.deeply_evaluated(),
+			Value::AttrSet(attr_set) => attr_set.deeply_evaluated(),
+			_ => true,
+		}
+	}
+
+
+	pub fn creation_pos(&self) -> Option<CodePos> {
+		match self {
+			Value::List(list) => list.creation_pos(),
+			Value::AttrSet(attr_set) => attr_set.creation_pos(),
+			_ => None,
 		}
 	}
 

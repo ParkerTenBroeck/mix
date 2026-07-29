@@ -1,4 +1,4 @@
-use std::cell::RefCell;
+use std::{cell::RefCell, fmt};
 
 use dumpster::Trace;
 
@@ -7,9 +7,21 @@ use crate::{
 	runtime::{scope::Scope, thunk::Thunk, value::Value},
 };
 
-#[derive(Clone, Debug, Trace)]
+#[derive(Clone, Trace)]
 pub struct LazyValue {
 	state: RefCell<LazyValueKind>,
+}
+
+impl fmt::Debug for LazyValue {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		match self.snapshot() {
+			Some(LazyValueKind::Thunk(thunk)) => thunk.fmt(f),
+			Some(LazyValueKind::Value(Value::List(list))) => list.fmt(f),
+			Some(LazyValueKind::Value(Value::AttrSet(attrs))) => attrs.fmt(f),
+			Some(LazyValueKind::Value(value)) => value.fmt(f),
+			None => f.write_str("<borrowed>"),
+		}
+	}
 }
 
 impl<T: Into<Value>> From<T> for LazyValue {
@@ -54,6 +66,10 @@ impl LazyValue {
 		}
 	}
 
+	pub fn snapshot(&self) -> Option<LazyValueKind> {
+		self.state.try_borrow().ok().map(|state| state.clone())
+	}
+
 	pub fn thunk(&self) -> Option<Thunk> {
 		match &*self.state.borrow() {
 			LazyValueKind::Thunk(thunk) => Some(thunk.clone()),
@@ -75,5 +91,21 @@ pub enum LazyValueKind {
 impl<T: Into<Value>> From<T> for LazyValueKind {
 	fn from(value: T) -> Self {
 		Self::Value(value.into())
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use crate::runtime::value::{AttrSet, List};
+
+	use super::*;
+
+	#[test]
+	fn debug_output_hides_storage_wrappers() {
+		let attrset: LazyValue = Value::AttrSet(AttrSet::default()).into();
+		let list: LazyValue = Value::List(List::default()).into();
+
+		assert_eq!(format!("{attrset:?}"), "{}");
+		assert_eq!(format!("{list:?}"), "[]");
 	}
 }

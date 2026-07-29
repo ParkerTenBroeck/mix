@@ -89,6 +89,18 @@ impl Evaluator {
 			match res {
 				EvalStep::Pending if !fule.fule() => return Ok(None),
 				EvalStep::Pending => {}
+
+				EvalStep::Ret if frame.deep && !self.local.peek_value()?.deeply_evaluated() => {
+					let frame = self.pop_frame()?;
+
+					let pos = match frame.kind {
+						FrameKind::ByteCode(frame) => NativePosKind::Expr(frame.pos),
+						FrameKind::Native(frame) => frame.pos,
+					};
+					let value = self.local.pop_value()?;
+					self.begin_frame(self.local.get_deep_frame(pos, value))?;
+				}
+
 				EvalStep::Ret if self.frames.len() == 1 => {
 					return Ok(Some(self.local.pop_value()?));
 				}
@@ -104,7 +116,7 @@ impl Evaluator {
 #[derive(Default)]
 pub struct LocalEvaluator {
 	pub value_stack: Vec<Value>,
-	pub thunk_stack: Vec<LazyValue>,
+	pub lazy_stack: Vec<LazyValue>,
 }
 
 impl LocalEvaluator {
@@ -120,7 +132,7 @@ impl LocalEvaluator {
 	}
 
 	fn peek_thunk(&mut self) -> Result<&LazyValue, EvalError> {
-		self.thunk_stack
+		self.lazy_stack
 			.last()
 			.ok_or(EvalError::ByteCode("value stack"))
 	}
@@ -151,13 +163,13 @@ impl LocalEvaluator {
 		self.pop_value()?.expect_lambda()
 	}
 
-	fn push_thunk(&mut self, value: LazyValue) -> Result<(), EvalError> {
-		self.thunk_stack.push(value);
+	fn push_lazy(&mut self, value: LazyValue) -> Result<(), EvalError> {
+		self.lazy_stack.push(value);
 		Ok(())
 	}
 
-	fn pop_thunk(&mut self) -> Result<LazyValue, EvalError> {
-		self.thunk_stack
+	fn pop_lazy(&mut self) -> Result<LazyValue, EvalError> {
+		self.lazy_stack
 			.pop()
 			.ok_or(EvalError::ByteCode("thunk stack"))
 	}

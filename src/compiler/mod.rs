@@ -91,16 +91,19 @@ impl Compiler {
 				None
 			}
 			// mir::Expr::Lambda(_)
-			mir::Expr::Num(_) | mir::Expr::Str(_) | mir::Expr::List { .. } => {
+			mir::Expr::Num(_) | mir::Expr::Str(_) => {
 				self.compile_expr(builder, expr).emit(OpCode::UnEvalValue);
 				None
 			}
-			mir::Expr::AttrSet(attr_set)
-				if attr_set.dynamic_attrs.is_empty() && attr_set.dynamic_inherit.is_empty() =>
-			{
-				self.compile_expr(builder, expr).emit(OpCode::UnEvalValue);
-				None
-			}
+			// mir::Expr::List { .. } => {
+
+			// }
+			// mir::Expr::AttrSet(attr_set)
+			// 	if attr_set.dynamic_attrs.is_empty() && attr_set.dynamic_inherit.is_empty() =>
+			// {
+			// 	self.compile_expr(builder, expr).emit(OpCode::UnEvalValue);
+			// 	None
+			// }
 
 			_ => Some(
 				builder

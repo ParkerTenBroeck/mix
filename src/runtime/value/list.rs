@@ -1,18 +1,64 @@
-use std::{collections::VecDeque, ops::Deref};
+use std::{cell::Cell, collections::VecDeque, fmt, ops::Deref};
 
 use dumpster::{Trace, unsync::Gc};
 
-use crate::runtime::lazy::LazyValue;
+use crate::{bytecode::CodePos, runtime::{
+	lazy::{LazyValue, LazyValueKind},
+	value::Value,
+}};
 
-#[derive(Clone, Default, Debug, Trace)]
+#[derive(Clone, Default, Trace)]
 pub struct List {
-	inner: Gc<VecDeque<LazyValue>>,
+	inner: Gc<ListInner>,
+}
+
+#[derive(Clone, Default, Trace)]
+pub struct ListInner {
+	deep: Cell<bool>,
+	list: VecDeque<LazyValue>,
+	created_at: Option<CodePos>
+}
+
+impl fmt::Debug for List {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		f.debug_list()
+			.entries(self.inner.list.iter().map(ListValueDebug))
+			.finish()
+	}
+}
+
+struct ListValueDebug<'a>(&'a LazyValue);
+
+impl fmt::Debug for ListValueDebug<'_> {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		match self.0.snapshot() {
+			Some(LazyValueKind::Thunk(thunk)) => thunk.fmt(f),
+			Some(LazyValueKind::Value(Value::List(_) | Value::AttrSet(_))) => f.write_str("..."),
+			Some(LazyValueKind::Value(Value::Lambda(_))) => f.write_str("Lambda"),
+			Some(LazyValueKind::Value(value)) => value.fmt(f),
+			None => f.write_str("<borrowed>"),
+		}
+	}
 }
 
 impl List {
 	pub fn with_capacity(capacity: usize) -> List {
 		Self {
-			inner: Gc::new(VecDeque::with_capacity(capacity)),
+			inner: Gc::new(ListInner {
+				deep: Cell::new(true),
+				list: VecDeque::with_capacity(capacity),
+    			created_at: None,
+			}),
+		}
+	}
+
+	pub fn with_capacity_at(capacity: usize, pos: CodePos) -> List {
+		Self {
+			inner: Gc::new(ListInner {
+				deep: Cell::new(true),
+				list: VecDeque::with_capacity(capacity),
+    			created_at: Some(pos),
+			}),
 		}
 	}
 
@@ -20,8 +66,26 @@ impl List {
 		Gc::as_ptr(&self.inner) as *const () as usize
 	}
 
+	pub fn deeply_evaluated(&self) -> bool {
+		self.inner.deep.get()
+	}
+
+	pub fn creation_pos(&self) -> Option<CodePos> {
+		self.inner.created_at
+	}
+
+	/// Only set this once the value has been deeply evaluated.
+	/// Aka once all elements are also deeply evaluated
+	///
+	/// doing otherwise will cause incorrect (but not fatal or undefined) behavior when the VM tries to deeply evaluate it
+	pub fn set_deeply_evaluated(&self) {
+		self.inner.deep.set(false);
+	}
+
 	pub fn get_mut(&mut self) -> &mut VecDeque<LazyValue> {
-		Gc::make_mut(&mut self.inner)
+		let inner = Gc::make_mut(&mut self.inner);
+		inner.deep.set(false);
+		&mut inner.list
 	}
 }
 
@@ -29,6 +93,22 @@ impl Deref for List {
 	type Target = VecDeque<LazyValue>;
 
 	fn deref(&self) -> &Self::Target {
-		&self.inner
+		&self.inner.list
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn debug_output_shows_simple_values_and_elides_nested_values() {
+		let mut list = List::with_capacity(3);
+		list.get_mut().push_back(Value::Int(1).into());
+		list.get_mut().push_back(Value::Bool(true).into());
+		list.get_mut()
+			.push_back(Value::List(List::default()).into());
+
+		assert_eq!(format!("{list:?}"), "[Int(1), Bool(true), ...]");
 	}
 }

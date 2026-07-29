@@ -21,15 +21,10 @@ pub enum ThunkSnapshot {
 
 impl fmt::Debug for Thunk {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		let mut debug = f.debug_struct("Thunk");
-		debug.field("id", &format_args!("{:#x}", self.id()));
-
 		match self.0.try_borrow() {
-			Ok(state) => debug.field("state", &*state),
-			Err(_) => debug.field("state", &"<borrowed>"),
-		};
-
-		debug.finish()
+			Ok(state) => f.debug_tuple("Thunk").field(&*state).finish(),
+			Err(_) => f.debug_tuple("Thunk").field(&"<borrowed>").finish(),
+		}
 	}
 }
 
@@ -121,13 +116,23 @@ impl fmt::Debug for ThunkState {
 		match self {
 			Self::Constructing(pos) => f.debug_tuple("Constructing").field(pos).finish(),
 			Self::Expr(pos, _) => f.debug_tuple("Expr").field(pos).finish(),
-			Self::Apply(func, arg) => f
-				.debug_struct("Apply")
-				.field("function", func)
-				.field("argument", arg)
-				.finish(),
+			Self::Apply(_, _) => f.write_str("Apply"),
 			Self::Evaluating => f.write_str("Evaluating"),
 			Self::Evaluated(value) => f.debug_tuple("Evaluated").field(value).finish(),
 		}
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn debug_output_is_compact() {
+		let thunk = Thunk::application(Value::Int(1), Value::Int(2).into());
+		let output = format!("{thunk:?}");
+
+		assert_eq!(output, "Thunk(Apply)");
+		assert!(!output.contains("id"));
 	}
 }

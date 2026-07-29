@@ -1,3 +1,4 @@
+pub mod builtin;
 pub mod eval;
 pub mod lazy;
 pub mod pretty;
@@ -5,7 +6,6 @@ pub mod scope;
 pub mod thunk;
 pub mod trace;
 pub mod value;
-pub mod builtin;
 
 use crate::{
 	bytecode::Program,

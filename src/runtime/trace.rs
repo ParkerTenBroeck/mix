@@ -2,7 +2,10 @@ use crate::{
 	files::{Files, Span},
 	runtime::{
 		Runtime,
-		eval::{EvalError, Evaluator, ThunkEvalErr},
+		eval::{
+			EvalError, Evaluator, Frame as EvalFrame, FrameKind as EvalFrameKind, NativePosKind,
+			ThunkEvalErr,
+		},
 	},
 };
 
@@ -53,6 +56,9 @@ impl ErrorTrace {
 				FrameKind::Fn => "function call failed here",
 				FrameKind::NativeFn(_) => "native function call failed",
 				FrameKind::LazyEval => "evaluation failed here",
+				FrameKind::DeepEvalValue => "deep evaluation failed here",
+				FrameKind::DeepEvalExpr => "deep evaluation failed here",
+				FrameKind::DeepEval => "deep evaluation failed",
 			},
 		)];
 
@@ -61,11 +67,17 @@ impl ErrorTrace {
 				FrameKind::Fn => "called from here".into(),
 				FrameKind::NativeFn(name) => format!("while calling native function \"{name}\""),
 				FrameKind::LazyEval => "while evaluating this expression".into(),
+				FrameKind::DeepEvalValue => "while deeply evaluating this value".into(),
+				FrameKind::DeepEvalExpr => "while deeply evaluating this expression".into(),
+				FrameKind::DeepEval => "while deeply evaluating a value".into(),
 			};
 			let label = match &frame.kind {
 				FrameKind::Fn => "function call",
 				FrameKind::NativeFn(_) => "native function call",
 				FrameKind::LazyEval => "lazy value forced here",
+				FrameKind::DeepEvalValue => "value created here",
+				FrameKind::DeepEvalExpr => "expression evaluated here",
+				FrameKind::DeepEval => "deep evaluation",
 			};
 			render_frame(&files, frame, Level::ERROR.secondary_title(title), label)
 		}));
@@ -83,24 +95,41 @@ impl ErrorTrace {
 	fn build_trace(runtime: &Runtime, eval: &Evaluator) -> Vec<FrameInfo> {
 		eval.frames
 			.iter()
-			.filter_map(
-				|frame| None, // match frame {
-				              // PotentialFrame::Realized(frame) => Some(FrameInfo {
-				              // 	span: runtime.program.find_pos(frame.pos),
-				              // 	kind: map_frame_kind(&frame.kind),
-				              // }),
-				              // PotentialFrame::PotentialDeep(_) => None,
-				              // PotentialFrame::DeepEval(code_pos) => Some(FrameInfo {
-				              // 	span: runtime.program.find_pos(*code_pos),
-				              // 	kind: FrameKind::LazyEval,
-				              // }),
-				              // PotentialFrame::NativeLambda(_, name) => Some(FrameInfo {
-				              // 	span: None,
-				              // 	kind: FrameKind::NativeFn(name.clone()),
-				              // }),
-				              // }
-			)
+			.filter_map(|frame| frame_info(runtime, frame))
 			.collect()
+	}
+}
+
+fn frame_info(runtime: &Runtime, frame: &EvalFrame) -> Option<FrameInfo> {
+	match &frame.kind {
+		EvalFrameKind::ByteCode(bytecode) => Some(FrameInfo {
+			span: runtime.program.find_pos(bytecode.pos),
+			kind: if frame.thunk.is_some() {
+				FrameKind::LazyEval
+			} else {
+				FrameKind::Fn
+			},
+		}),
+		EvalFrameKind::Native(native) if native.name == "deep eval" => {
+			let (pos, kind) = match native.pos {
+				NativePosKind::Value(pos) => (Some(pos), FrameKind::DeepEvalValue),
+				NativePosKind::Expr(pos) => (Some(pos), FrameKind::DeepEvalExpr),
+				NativePosKind::None => (None, FrameKind::DeepEval),
+			};
+			Some(FrameInfo {
+				span: pos.and_then(|pos| runtime.program.find_pos(pos)),
+				kind,
+			})
+		}
+		EvalFrameKind::Native(native) => Some(FrameInfo {
+			span: match native.pos {
+				NativePosKind::Value(pos) | NativePosKind::Expr(pos) => {
+					runtime.program.find_pos(pos)
+				}
+				NativePosKind::None => None,
+			},
+			kind: FrameKind::NativeFn(native.name.clone()),
+		}),
 	}
 }
 
@@ -128,6 +157,9 @@ pub enum FrameKind {
 	Fn,
 	NativeFn(std::borrow::Cow<'static, str>),
 	LazyEval,
+	DeepEvalValue,
+	DeepEvalExpr,
+	DeepEval,
 }
 
 pub struct FrameInfo {

@@ -22,7 +22,7 @@ impl LocalEvaluator {
 					)
 				})?;
 
-				self.thunk_stack.push(arg);
+				self.lazy_stack.push(arg);
 
 				Ok(ApplyResult::Frame(FrameKind::ByteCode(ByteCodeFrame {
 					pos: lambda.code,

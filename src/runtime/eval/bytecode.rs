@@ -124,28 +124,28 @@ impl LocalEvaluator {
 			OpCode::Branch(offset) => next_pos = next_pos + offset,
 
 			OpCode::CreateAttrSet => {
-				self.value_stack.push(Value::AttrSet(AttrSet::default()));
+				self.value_stack.push(Value::AttrSet(AttrSet::new_at(frame.pos)));
 			}
 			OpCode::SetAttr => {
 				let name = self.pop_string()?;
 				let mut attrset = self.pop_attrset()?;
-				let value = self.pop_thunk()?;
+				let value = self.pop_lazy()?;
 
 				attrset.get_mut().insert(name, value);
 				self.push_value(Value::AttrSet(attrset))?;
 			}
 			OpCode::CreateList(capacity) => {
-				self.push_value(Value::List(List::with_capacity(capacity)))?
+				self.push_value(Value::List(List::with_capacity_at(capacity, frame.pos)))?
 			}
 			OpCode::AppendList => {
 				let mut list = self.pop_list()?;
-				let value = self.pop_thunk()?;
+				let value = self.pop_lazy()?;
 				list.get_mut().push_back(value);
 				self.push_value(Value::List(list))?;
 			}
 			OpCode::Apply => {
 				let func = self.pop_value()?;
-				let arg = self.pop_thunk()?;
+				let arg = self.pop_lazy()?;
 
 				match self.eval_apply(runtime, func, arg, None, false)? {
 					ThunkResult::Value(value) => self.push_value(value)?,
@@ -178,7 +178,7 @@ impl LocalEvaluator {
 				let lazy = Self::get_attr(&indexing, &index)?;
 
 				if let Some(lazy) = lazy {
-					self.push_thunk(lazy)?;
+					self.push_lazy(lazy)?;
 				} else {
 					let idx = match index {
 						Value::Bool(bool) => format!("{bool}"),
@@ -198,13 +198,13 @@ impl LocalEvaluator {
 				let indexing = self.pop_value()?;
 				let lazy = Self::get_attr(&indexing, &index).ok().flatten();
 				if let Some(lazy) = lazy {
-					self.thunk_stack.push(lazy);
+					self.lazy_stack.push(lazy);
 				} else {
 					next_pos = next_pos + else_off;
 				}
 			}
 			OpCode::EvalThunk => {
-				let lazy = self.pop_thunk()?;
+				let lazy = self.pop_lazy()?;
 
 				match self.eval_lazy(runtime, lazy, false)? {
 					ThunkResult::Value(value) => self.push_value(value)?,
@@ -216,11 +216,11 @@ impl LocalEvaluator {
 			}
 			OpCode::UnEvalValue => {
 				let value = self.pop_value()?;
-				self.push_thunk(value.into())?;
+				self.push_lazy(value.into())?;
 			}
 			OpCode::BindThunkScope => {
 				let attr = self.pop_string()?;
-				let thunk = self.pop_thunk()?;
+				let thunk = self.pop_lazy()?;
 				frame.scope.bind(attr, thunk);
 			}
 			OpCode::BindValueScope => {
@@ -230,10 +230,10 @@ impl LocalEvaluator {
 			}
 
 			OpCode::CreateThunk(code_pos) => {
-				self.push_thunk(Thunk::uneval(code_pos, frame.scope.clone()).into())?
+				self.push_lazy(Thunk::uneval(code_pos, frame.scope.clone()).into())?
 			}
 			OpCode::BeginThunk(code_pos) => {
-				self.push_thunk(Thunk::construct_begin(code_pos).into())?
+				self.push_lazy(Thunk::construct_begin(code_pos).into())?
 			}
 			OpCode::FinalizeThunk => {
 				let succ = self
@@ -254,7 +254,7 @@ impl LocalEvaluator {
 						format!("failed to resolve {name:?}").into(),
 					));
 				};
-				self.push_thunk(lazy.clone())?;
+				self.push_lazy(lazy.clone())?;
 			}
 			OpCode::EnterScope => frame.scope = frame.scope.new_level(),
 			OpCode::LeaveScope => {
@@ -271,11 +271,11 @@ impl LocalEvaluator {
 				self.push_value(value)?;
 			}
 
-			OpCode::PopT => _ = self.pop_thunk()?,
+			OpCode::PopT => _ = self.pop_lazy()?,
 			OpCode::DupT => {
-				let thunk = self.pop_thunk()?;
-				self.push_thunk(thunk.clone())?;
-				self.push_thunk(thunk)?;
+				let thunk = self.pop_lazy()?;
+				self.push_lazy(thunk.clone())?;
+				self.push_lazy(thunk)?;
 			}
 
 			OpCode::Ret => {
