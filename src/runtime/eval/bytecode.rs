@@ -221,8 +221,8 @@ impl LocalEvaluator {
 			}
 			OpCode::BindThunkScope => {
 				let attr = self.pop_string()?;
-				let thunk = self.pop_lazy()?;
-				frame.scope.bind(attr, thunk);
+				let lazy = self.pop_lazy()?;
+				frame.scope.bind(attr, lazy);
 			}
 			OpCode::BindValueScope => {
 				let attr = self.pop_string()?;
@@ -238,7 +238,7 @@ impl LocalEvaluator {
 			}
 			OpCode::FinalizeThunk => {
 				let succ = self
-					.peek_thunk()?
+					.peek_lazy()?
 					.thunk()
 					.map_or(false, |t| t.construct_end(frame.scope.clone()));
 				if !succ {
@@ -274,9 +274,9 @@ impl LocalEvaluator {
 
 			OpCode::PopT => _ = self.pop_lazy()?,
 			OpCode::DupT => {
-				let thunk = self.pop_lazy()?;
-				self.push_lazy(thunk.clone())?;
-				self.push_lazy(thunk)?;
+				let lazy = self.pop_lazy()?;
+				self.push_lazy(lazy.clone())?;
+				self.push_lazy(lazy)?;
 			}
 
 			OpCode::Ret => {

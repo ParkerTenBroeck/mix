@@ -101,10 +101,10 @@ impl LocalEvaluator {
 	pub fn eval_lazy(
 		&mut self,
 		runtime: &mut Runtime,
-		thunk: LazyValue,
+		lazy: LazyValue,
 		deep: bool,
 	) -> Result<ThunkResult, EvalError> {
-		match thunk.try_get_value() {
+		match lazy.try_get_value() {
 			LazyValueKind::Thunk(thunk) => self.eval_thunk(runtime, thunk, deep),
 			LazyValueKind::Value(value) => self.eval_value(runtime, value, deep),
 		}

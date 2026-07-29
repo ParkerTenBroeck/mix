@@ -39,14 +39,14 @@ enum EvalStep {
 impl Evaluator {
 	pub fn begin_eval(
 		runtime: &mut Runtime,
-		thunk: LazyValue,
+		lazy: LazyValue,
 		deep: bool,
 	) -> Result<Evaluator, ErrorTrace> {
 		let mut myself = Self {
 			local: Default::default(),
 			frames: vec![],
 		};
-		match myself.local.eval_lazy(runtime, thunk, deep).unwrap() {
+		match myself.local.eval_lazy(runtime, lazy, deep).unwrap() {
 			ThunkResult::Value(value) => myself.local.value_stack.push(value),
 			ThunkResult::Frame(frame) => myself.frames.push(frame),
 		}
@@ -150,7 +150,7 @@ impl LocalEvaluator {
 			.ok_or(EvalError::ByteCode("value stack"))
 	}
 
-	fn peek_thunk(&mut self) -> Result<&LazyValue, EvalError> {
+	fn peek_lazy(&mut self) -> Result<&LazyValue, EvalError> {
 		self.lazy_stack
 			.last()
 			.ok_or(EvalError::ByteCode("value stack"))
@@ -190,6 +190,6 @@ impl LocalEvaluator {
 	fn pop_lazy(&mut self) -> Result<LazyValue, EvalError> {
 		self.lazy_stack
 			.pop()
-			.ok_or(EvalError::ByteCode("thunk stack"))
+			.ok_or(EvalError::ByteCode("lazy stack"))
 	}
 }
