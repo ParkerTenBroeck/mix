@@ -53,6 +53,25 @@ impl Evaluator {
 		Ok(myself)
 	}
 
+	pub fn begin_apply(
+		runtime: &mut Runtime,
+		lambda: Lambda,
+		arg: LazyValue,
+	) -> Result<Evaluator, ErrorTrace> {
+		let mut myself = Self::default();
+		let result = myself
+			.local
+			.eval_apply(runtime, lambda, arg, None, false)
+			.map_err(|error| ErrorTrace::build(runtime, &myself, error))?;
+
+		match result {
+			ThunkResult::Value(value) => myself.local.value_stack.push(value),
+			ThunkResult::Frame(frame) => myself.frames.push(frame),
+		}
+
+		Ok(myself)
+	}
+
 	fn begin_frame(&mut self, frame: Frame) -> Result<(), EvalError> {
 		self.frames.push(frame);
 		Ok(())
@@ -69,7 +88,7 @@ impl Evaluator {
 	) -> Result<Option<Value>, EvalError> {
 		loop {
 			let Some(frame) = self.frames.last_mut() else {
-				todo!()
+				return Ok(self.local.value_stack.pop());
 			};
 
 			let res = match &mut frame.kind {

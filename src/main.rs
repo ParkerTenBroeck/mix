@@ -33,7 +33,7 @@ fn run() {
 	println!("{}", PrettyProgram::new(&runtime.program, &loader));
 
 	println!("{}", PrettyLazyValue::new(&runtime, &res));
-	let res = runtime.eval(res, true);
+	let res = runtime.eval_lazy(res, true);
 	match res {
 		Ok(ok) => println!("{}", PrettyValue::new(&runtime, &ok)),
 		Err(trace) => println!("{}", trace.render(&runtime)),

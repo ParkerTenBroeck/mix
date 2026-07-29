@@ -1,8 +1,12 @@
 use crate::{
-	bytecode::CodePos, runtime::{
+	bytecode::CodePos,
+	runtime::{
 		eval::{
-			EvalError, Frame, FrameKind, LocalEvaluator, NativeCtx, NativeFrame, NativeLambdaAsync, NativePosKind, ThunkResult,
-		}, lazy::{LazyValue, LazyValueKind}, value::Value,
+			EvalError, Frame, FrameKind, LocalEvaluator, NativeCtx, NativeFrame, NativeLambdaAsync,
+			NativePosKind, ThunkResult,
+		},
+		lazy::{LazyValue, LazyValueKind},
+		value::Value,
 	},
 };
 
@@ -56,7 +60,10 @@ impl LocalEvaluator {
 		if not_deep_evaluated == 0 {
 			Ok(ThunkResult::Value(value))
 		} else {
-            let pos = value.creation_pos().map(NativePosKind::Value).unwrap_or_default();
+			let pos = value
+				.creation_pos()
+				.map(NativePosKind::Value)
+				.unwrap_or_default();
 			Ok(ThunkResult::Frame(self.get_deep_frame(pos, value)))
 		}
 	}

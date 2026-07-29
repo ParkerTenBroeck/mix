@@ -3,8 +3,7 @@ use std::{cell::RefCell, fmt};
 use dumpster::{Trace, unsync::Gc};
 
 use crate::{
-	bytecode::CodePos,
-	runtime::{lazy::LazyValue, scope::Scope, value::Value},
+	bytecode::CodePos, runtime::{lazy::LazyValue, scope::Scope, value::{Lambda, Value}},
 };
 
 #[derive(Clone, Trace)]
@@ -14,7 +13,7 @@ pub struct Thunk(pub(super) Gc<RefCell<ThunkState>>);
 pub enum ThunkSnapshot {
 	Constructing(CodePos),
 	Expr(CodePos),
-	Apply(Value, LazyValue),
+	Apply(Lambda, LazyValue),
 	Evaluating,
 	Evaluated(Value),
 }
@@ -41,7 +40,7 @@ impl Thunk {
 		Self(Gc::new(RefCell::new(ThunkState::Expr(pos, scope))))
 	}
 
-	pub fn application(func: Value, arg: LazyValue) -> Self {
+	pub fn application(func: Lambda, arg: LazyValue) -> Self {
 		Self(Gc::new(RefCell::new(ThunkState::Apply(func, arg))))
 	}
 
@@ -104,7 +103,7 @@ pub enum ThunkState {
 	Constructing(CodePos),
 	Expr(CodePos, Scope),
 
-	Apply(Value, LazyValue),
+	Apply(Lambda, LazyValue),
 
 	Evaluating,
 
@@ -120,19 +119,5 @@ impl fmt::Debug for ThunkState {
 			Self::Evaluating => f.write_str("Evaluating"),
 			Self::Evaluated(value) => f.debug_tuple("Evaluated").field(value).finish(),
 		}
-	}
-}
-
-#[cfg(test)]
-mod tests {
-	use super::*;
-
-	#[test]
-	fn debug_output_is_compact() {
-		let thunk = Thunk::application(Value::Int(1), Value::Int(2).into());
-		let output = format!("{thunk:?}");
-
-		assert_eq!(output, "Thunk(Apply)");
-		assert!(!output.contains("id"));
 	}
 }

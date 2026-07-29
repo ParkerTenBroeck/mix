@@ -3,7 +3,7 @@ use crate::runtime::{
 	eval::{ByteCodeFrame, EvalError, Frame, FrameKind, LocalEvaluator, func::ApplyResult},
 	lazy::{LazyValue, LazyValueKind},
 	thunk::{Thunk, ThunkState},
-	value::{NativeLambda, Value},
+	value::{Lambda, Value},
 };
 
 #[derive(Debug)]
@@ -38,35 +38,55 @@ impl LocalEvaluator {
 		thunk: Thunk,
 		deep: bool,
 	) -> Result<ThunkResult, EvalError> {
-		let inner = &mut *thunk.0.borrow_mut();
-		match inner {
-			ThunkState::Expr(code_loc, scope) => {
-				let (pos, scope) = (*code_loc, scope.clone());
-				*inner = ThunkState::Evaluating;
+		enum Action {
+			EvalExpr(ByteCodeFrame),
+			EvalApply(Lambda, LazyValue),
+			Value(Value),
+		}
 
-				let eval = ByteCodeFrame { pos, scope };
-				Ok(ThunkResult::Frame(Frame {
-					kind: FrameKind::ByteCode(eval),
-					thunk: Some(thunk.clone()),
-					deep,
-				}))
+		let action = {
+			let mut inner = thunk.0.borrow_mut();
+			match &mut *inner {
+				ThunkState::Expr(code_loc, scope) => {
+					let eval = ByteCodeFrame {
+						pos: *code_loc,
+						scope: scope.clone(),
+					};
+					*inner = ThunkState::Evaluating;
+					Action::EvalExpr(eval)
+				}
+				ThunkState::Constructing(_) => {
+					return Err(EvalError::ThunkEval(ThunkEvalErr::NotConstructed));
+				}
+				ThunkState::Evaluating => {
+					return Err(EvalError::ThunkEval(ThunkEvalErr::InfiniteRec));
+				}
+				ThunkState::Evaluated(value) => Action::Value(value.clone()),
+				ThunkState::Apply(_, _) => {
+					let state = std::mem::replace(&mut *inner, ThunkState::Evaluating);
+					let ThunkState::Apply(func, arg) = state else {
+						unreachable!()
+					};
+					Action::EvalApply(func, arg)
+				}
 			}
-			ThunkState::Constructing(_) => Err(EvalError::ThunkEval(ThunkEvalErr::NotConstructed)),
-			ThunkState::Evaluating => Err(EvalError::ThunkEval(ThunkEvalErr::InfiniteRec)),
-			ThunkState::Evaluated(value) => self.eval_value(runtime, value.clone(), deep),
-			ThunkState::Apply(func, arg) => {
-				let func = std::mem::replace(func, Value::Bool(false));
-				let arg = std::mem::replace(arg, Value::Bool(false).into());
-				*inner = ThunkState::Evaluating;
-				self.eval_apply(runtime, func, arg, Some(thunk.clone()), deep)
-			}
+		};
+
+		match action {
+			Action::EvalExpr(eval) => Ok(ThunkResult::Frame(Frame {
+				kind: FrameKind::ByteCode(eval),
+				thunk: Some(thunk),
+				deep,
+			})),
+			Action::EvalApply(func, arg) => self.eval_apply(runtime, func, arg, Some(thunk), deep),
+			Action::Value(value) => self.eval_value(runtime, value, deep),
 		}
 	}
 
 	pub fn eval_apply(
 		&mut self,
 		runtime: &mut Runtime,
-		func: Value,
+		func: Lambda,
 		arg: LazyValue,
 		thunk: Option<Thunk>,
 		deep: bool,

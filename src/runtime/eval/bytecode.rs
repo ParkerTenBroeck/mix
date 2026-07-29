@@ -124,7 +124,8 @@ impl LocalEvaluator {
 			OpCode::Branch(offset) => next_pos = next_pos + offset,
 
 			OpCode::CreateAttrSet => {
-				self.value_stack.push(Value::AttrSet(AttrSet::new_at(frame.pos)));
+				self.value_stack
+					.push(Value::AttrSet(AttrSet::new_at(frame.pos)));
 			}
 			OpCode::SetAttr => {
 				let name = self.pop_string()?;
@@ -144,7 +145,7 @@ impl LocalEvaluator {
 				self.push_value(Value::List(list))?;
 			}
 			OpCode::Apply => {
-				let func = self.pop_value()?;
+				let func = self.pop_lambda()?;
 				let arg = self.pop_lazy()?;
 
 				match self.eval_apply(runtime, func, arg, None, false)? {

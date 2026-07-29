@@ -1,7 +1,14 @@
 use dumpster::Trace;
 
 use crate::runtime::{
-	Runtime, eval::{EvalError, EvalStep, FrameKind, Fule, LocalEvaluator, NativeFrame, NativePosKind, func::ApplyResult}, lazy::{LazyValue, LazyValueKind}, thunk::Thunk, value::{NativeLambda, Value},
+	Runtime,
+	eval::{
+		EvalError, EvalStep, FrameKind, Fule, LocalEvaluator, NativeFrame, NativePosKind,
+		func::ApplyResult,
+	},
+	lazy::{LazyValue, LazyValueKind},
+	thunk::Thunk,
+	value::{Lambda, NativeLambda, Value},
 };
 
 use std::{borrow::Cow, marker::PhantomData, pin::Pin, task::*};
@@ -91,7 +98,7 @@ static VTABLE: RawWakerVTable = RawWakerVTable::new(|_| panic!(), |_| {}, |_| {}
 
 enum ToEval {
 	Thunk(Thunk, bool),
-	Func(Value, LazyValue, bool),
+	Func(Lambda, LazyValue, bool),
 	DeepValue(Value),
 	None,
 }
@@ -179,7 +186,7 @@ impl NativeCtx {
 
 	pub async fn eval_apply(
 		&mut self,
-		func: impl Into<Value>,
+		func: impl Into<Lambda>,
 		arg: impl Into<LazyValue>,
 	) -> Result<Value, EvalError> {
 		Self::with(|ctx| {

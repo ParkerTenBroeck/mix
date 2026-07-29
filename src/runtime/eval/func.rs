@@ -9,11 +9,9 @@ impl LocalEvaluator {
 	pub fn apply(
 		&mut self,
 		runtime: &mut Runtime,
-		func: Value,
+		lambda: Lambda,
 		arg: LazyValue,
 	) -> Result<ApplyResult, EvalError> {
-		let lambda = func.expect_lambda()?;
-
 		match lambda {
 			Lambda::Lambda { scope, lambda } => {
 				let lambda = runtime.program.get_lambda(lambda).ok_or_else(|| {

@@ -85,7 +85,7 @@ impl NativeLambdaAsync for MkList<LazyValue> {
 	}
 
 	async fn apply(self, mut ctx: NativeCtx, arg: LazyValue) -> Result<Value, EvalError> {
-		let func = ctx.eval_lazy(self.0).await?;
+		let func = ctx.eval_lazy(self.0).await?.expect_lambda()?;
 		let len = ctx.eval_lazy(arg).await?.expect_int()?;
 
 		let mut list = List::default();

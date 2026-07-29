@@ -343,7 +343,7 @@ mod tests {
 		let lazy = runtime
 			.load("test.mix")
 			.map_err(|_| "source failed to compile".to_owned())?;
-		match runtime.eval(lazy, true) {
+		match runtime.eval_lazy(lazy, true) {
 			Ok(value) => Ok(value),
 			Err(error) => Err(error.render(&runtime)),
 		}

@@ -88,8 +88,8 @@ impl<'rt> PrettyPrinter<'rt> {
 			return;
 		}
 		match thunk.snapshot() {
-			Some(ThunkSnapshot::Apply(func, arg)) => {
-				self.count_value(&func, seen);
+			Some(ThunkSnapshot::Apply(_, arg)) => {
+				// self.count_value(&func, seen);
 				self.count_lazy(&arg, seen);
 			}
 			Some(ThunkSnapshot::Evaluated(value)) => self.count_value(&value, seen),
@@ -241,7 +241,7 @@ impl<'rt> PrettyPrinter<'rt> {
 				)
 			}
 			ThunkSnapshot::Apply(func, arg) => {
-				let func = self.render_value_inner(&func, indent);
+				let func = self.render_lambda(&func);
 				let arg = self.render_lazy_inner(&arg, indent);
 				format!("{prefix}{func} {arg}")
 			}
