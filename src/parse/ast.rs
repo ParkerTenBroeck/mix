@@ -1,8 +1,25 @@
 use crate::files::Node;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Type<'a> {
+pub enum Type<'a> {
+	Named(Node<&'a str>),
+	Lambda {
+		arg: Box<Node<Type<'a>>>,
+		ret: Box<Node<Type<'a>>>,
+	},
+	List(Box<Node<Type<'a>>>),
+	Tuple(Vec<Node<Type<'a>>>),
+	AttrSet {
+		name: Option<Node<&'a str>>,
+		fields: Vec<Node<TypeAttr<'a>>>,
+	},
+	Union(Vec<Node<Type<'a>>>),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TypeAttr<'a> {
 	pub name: Node<&'a str>,
+	pub ty: Node<Type<'a>>,
 }
 
 #[derive(Clone, Debug)]

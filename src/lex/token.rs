@@ -37,6 +37,7 @@ pub enum Token<'a> {
 	DotDot,
 	Question,
 	At,
+	Bar,
 	PipeR,
 	PipeL,
 
@@ -105,6 +106,7 @@ impl<'a> std::fmt::Display for Token<'a> {
 			Token::DotDot => write!(f, ".."),
 			Token::Question => write!(f, "?"),
 			Token::At => write!(f, "@"),
+			Token::Bar => write!(f, "|"),
 			Token::Dollar => write!(f, "$"),
 			Token::PipeR => write!(f, "|>"),
 			Token::PipeL => write!(f, "<|"),

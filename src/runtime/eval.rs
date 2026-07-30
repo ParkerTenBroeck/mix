@@ -84,7 +84,7 @@ impl Evaluator {
 	pub fn run(
 		&mut self,
 		runtime: &mut Runtime,
-		mut fule: Fule,
+		fule: &mut Fule,
 	) -> Result<Option<Value>, EvalError> {
 		loop {
 			let Some(frame) = self.frames.last_mut() else {
@@ -92,10 +92,10 @@ impl Evaluator {
 			};
 
 			let res = match &mut frame.kind {
-				FrameKind::ByteCode(frame) => self.local.run_bytecode(runtime, frame, &mut fule)?,
+				FrameKind::ByteCode(frame) => self.local.run_bytecode(runtime, frame, fule)?,
 				FrameKind::Native(frame) => {
 					self.local
-						.poll_native_lambda(runtime, &mut fule, frame.state.as_mut())?
+						.poll_native_lambda(runtime, fule, frame.state.as_mut())?
 				}
 			};
 

@@ -167,7 +167,38 @@ impl MirLowerer {
 	}
 
 	fn lower_type<'a>(&mut self, ty: Node<ast::Type<'a>>) -> Node<mir::Type<'a>> {
-		ty.map(|ty| mir::Type { name: ty.name })
+		ty.map(|ty| match ty {
+			ast::Type::Named(name) => mir::Type::Named(name),
+			ast::Type::Lambda { arg, ret } => mir::Type::Lambda {
+				arg: Box::new(self.lower_type(*arg)),
+				ret: Box::new(self.lower_type(*ret)),
+			},
+			ast::Type::List(element) => mir::Type::List(Box::new(self.lower_type(*element))),
+			ast::Type::Tuple(elements) => mir::Type::Tuple(
+				elements
+					.into_iter()
+					.map(|element| self.lower_type(element))
+					.collect(),
+			),
+			ast::Type::AttrSet { name, fields } => mir::Type::AttrSet {
+				name,
+				fields: fields
+					.into_iter()
+					.map(|field| {
+						field.map(|field| mir::TypeAttr {
+							name: field.name,
+							ty: self.lower_type(field.ty),
+						})
+					})
+					.collect(),
+			},
+			ast::Type::Union(variants) => mir::Type::Union(
+				variants
+					.into_iter()
+					.map(|variant| self.lower_type(variant))
+					.collect(),
+			),
+		})
 	}
 
 	fn lower_binop<'a>(

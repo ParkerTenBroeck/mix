@@ -15,10 +15,7 @@ impl MirLowerer {
 	pub(crate) fn verify_let_pattern_bindings<'a>(&mut self, bindings: &[mir::LetBinding<'a>]) {
 		let mut seen = HashMap::default();
 		for binding in bindings {
-			if binding.id.0.binding.is_none()
-				|| binding.id.0.ty.is_some()
-				|| binding.id.0.destruct.is_some()
-			{
+			if binding.id.0.binding.is_none() || binding.id.0.destruct.is_some() {
 				self.reports
 					.emit(UnsupportedLetBindingError { span: binding.id.1 });
 				continue;

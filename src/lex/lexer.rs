@@ -147,7 +147,7 @@ impl<'a> Lexer<'a> {
 					self.next_char();
 					Ok(Token::PipeR)
 				}
-				_ => Err(LexError::UnexpectedChar('|')),
+				_ => Ok(Token::Bar),
 			},
 			Some('&') => match self.peek_char() {
 				Some('&') => {

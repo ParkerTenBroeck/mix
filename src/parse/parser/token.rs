@@ -50,6 +50,7 @@ impl<'a> Token<'a> {
 			Token::DotDot => false,
 			Token::Question => false,
 			Token::At => false,
+			Token::Bar => false,
 			Token::PipeR => false,
 			Token::PipeL => false,
 			Token::Plus => false,

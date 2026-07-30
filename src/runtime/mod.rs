@@ -57,7 +57,7 @@ impl Runtime {
 
 	pub fn eval_lazy(&mut self, lazy: LazyValue, deep: bool) -> Result<Value, ErrorTrace> {
 		let mut eval = Evaluator::begin_eval(self, lazy, deep)?;
-		let res = eval.run(self, Fule::unlimited());
+		let res = eval.run(self, &mut Fule::unlimited());
 		Ok(res
 			.map_err(|err| ErrorTrace::build(self, &eval, err))?
 			.unwrap())
