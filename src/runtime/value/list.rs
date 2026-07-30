@@ -2,10 +2,13 @@ use std::{cell::Cell, collections::VecDeque, fmt, ops::Deref};
 
 use dumpster::{Trace, unsync::Gc};
 
-use crate::{bytecode::CodePos, runtime::{
-	lazy::{LazyValue, LazyValueKind},
-	value::Value,
-}};
+use crate::{
+	bytecode::CodePos,
+	runtime::{
+		lazy::{LazyValue, LazyValueKind},
+		value::Value,
+	},
+};
 
 #[derive(Clone, Default, Trace)]
 pub struct List {
@@ -16,7 +19,7 @@ pub struct List {
 pub struct ListInner {
 	deep: Cell<bool>,
 	list: VecDeque<LazyValue>,
-	created_at: Option<CodePos>
+	created_at: Option<CodePos>,
 }
 
 impl fmt::Debug for List {
@@ -47,7 +50,7 @@ impl List {
 			inner: Gc::new(ListInner {
 				deep: Cell::new(true),
 				list: VecDeque::with_capacity(capacity),
-    			created_at: None,
+				created_at: None,
 			}),
 		}
 	}
@@ -57,7 +60,7 @@ impl List {
 			inner: Gc::new(ListInner {
 				deep: Cell::new(true),
 				list: VecDeque::with_capacity(capacity),
-    			created_at: Some(pos),
+				created_at: Some(pos),
 			}),
 		}
 	}

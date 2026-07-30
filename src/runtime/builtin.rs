@@ -100,3 +100,62 @@ impl NativeLambdaAsync for MkList<LazyValue> {
 		Ok(Value::List(list))
 	}
 }
+
+#[derive(Trace, Clone)]
+pub struct Map<T>(T);
+
+impl Map<()> {
+	pub fn new() -> Self {
+		Self(())
+	}
+}
+
+impl NativeLambdaDyn for Map<()> {
+	fn identifier(&self) -> Cow<'static, str> {
+		"map".into()
+	}
+
+	fn begin(&self, runtime: &mut Runtime, arg: LazyValue) -> NativeLambdaResult {
+		NativeLambdaResult::Value(NativeLambda::new(Map(arg)).into())
+	}
+}
+
+impl NativeLambdaAsync for Map<LazyValue> {
+	fn identifier(&self) -> Cow<'static, str> {
+		"map".into()
+	}
+
+	async fn apply(self, mut ctx: NativeCtx, arg: LazyValue) -> Result<Value, EvalError> {
+		let lambda = ctx.eval_lazy(self.0).await?.expect_lambda()?;
+		let mut list = ctx.eval_lazy(arg).await?.expect_list()?;
+
+		for el in list.get_mut() {
+			*el = Thunk::application(lambda.clone(), std::mem::replace(el, false.into())).into();
+		}
+		Ok(list.into())
+	}
+}
+
+#[derive(Trace, Clone)]
+pub struct Import;
+
+impl NativeLambdaAsync for Import {
+	fn identifier(&self) -> Cow<'static, str> {
+		"import".into()
+	}
+
+	async fn apply(self, mut ctx: NativeCtx, arg: LazyValue) -> Result<Value, EvalError> {
+		let path = ctx.eval_lazy(arg).await?.expect_string()?;
+		let res = ctx
+			.runtime(|runtime| {
+				runtime
+					.load(&path)
+					.map_err(|err| err.render(&runtime.loader.files()).join("\n"))
+			})
+			.await;
+		match res {
+			Ok(ok) => ctx.eval_lazy(ok).await,
+			Err(err) => Err(EvalError::Internal(err.into())),
+		}
+	}
+}

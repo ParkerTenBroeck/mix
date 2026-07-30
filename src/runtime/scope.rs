@@ -64,15 +64,21 @@ impl ScopeBuilder {
 		use super::builtin::*;
 
 		let mut builtins = AttrSet::new();
-		builtins.get_mut().insert(
-			StringKind::String("match".into()),
-			Value::Lambda(Lambda::NativeLambda(NativeLambda::new(Match::new()))).into(),
-		);
 
-		builtins.get_mut().insert(
-			StringKind::String("mkList".into()),
-			Value::Lambda(Lambda::NativeLambda(NativeLambda::new(MkList::new()))).into(),
-		);
+		macro_rules! builtin {
+			($expr:expr) => {{
+				let meow = $expr;
+				use crate::runtime::eval::NativeLambdaDyn;
+				builtins.get_mut().insert(
+					StringKind::String(meow.identifier().into()),
+					Value::Lambda(Lambda::NativeLambda(NativeLambda::new(meow))).into(),
+				);
+			}};
+		}
+		builtin!(Match::new());
+		builtin!(MkList::new());
+		builtin!(Map::new());
+		builtin!(Import);
 
 		self.scope.insert(
 			StringKind::String("builtins".into()),

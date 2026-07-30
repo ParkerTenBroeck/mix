@@ -6,7 +6,9 @@ use std::{
 use dumpster::{Trace, unsync::Gc};
 
 use crate::{
-	HashMap, bytecode::CodePos, runtime::{
+	HashMap,
+	bytecode::CodePos,
+	runtime::{
 		lazy::{LazyValue, LazyValueKind},
 		value::{StringKind, Value},
 	},
@@ -125,7 +127,7 @@ impl AttrSet {
 			}),
 		}
 	}
-	
+
 	pub fn creation_pos(&self) -> Option<CodePos> {
 		self.inner.created_at
 	}

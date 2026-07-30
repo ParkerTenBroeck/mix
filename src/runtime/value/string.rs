@@ -4,6 +4,7 @@ use std::{borrow::Borrow, rc::Rc};
 pub enum StringKind {
 	String(String),
 	Interned(Rc<String>),
+	Static(&'static str),
 }
 
 impl From<Rc<String>> for StringKind {
@@ -18,9 +19,9 @@ impl From<String> for StringKind {
 	}
 }
 
-impl<'a> From<&'a str> for StringKind {
-	fn from(value: &'a str) -> Self {
-		Self::String(value.into())
+impl From<&'static str> for StringKind {
+	fn from(value: &'static str) -> Self {
+		Self::Static(value)
 	}
 }
 
@@ -64,6 +65,7 @@ impl std::ops::Deref for StringKind {
 		match self {
 			StringKind::String(str) => &**str,
 			StringKind::Interned(gc) => &**gc,
+			StringKind::Static(str) => str,
 		}
 	}
 }
@@ -90,12 +92,13 @@ impl StringKind {
 	pub fn get_mut(&mut self) -> &mut String {
 		match self {
 			StringKind::Interned(str) => *self = StringKind::String(str.as_str().to_owned()),
+			StringKind::Static(str) => *self = StringKind::String(str.to_owned()),
 			_ => {}
 		}
 
 		match self {
 			StringKind::String(str) => str,
-			StringKind::Interned(_) => unreachable!(),
+			_ => unreachable!(),
 		}
 	}
 }

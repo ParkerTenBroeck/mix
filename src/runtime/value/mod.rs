@@ -64,7 +64,6 @@ impl Value {
 		}
 	}
 
-
 	pub fn creation_pos(&self) -> Option<CodePos> {
 		match self {
 			Value::List(list) => list.creation_pos(),

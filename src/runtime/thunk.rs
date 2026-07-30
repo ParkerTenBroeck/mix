@@ -3,7 +3,12 @@ use std::{cell::RefCell, fmt};
 use dumpster::{Trace, unsync::Gc};
 
 use crate::{
-	bytecode::CodePos, runtime::{lazy::LazyValue, scope::Scope, value::{Lambda, Value}},
+	bytecode::CodePos,
+	runtime::{
+		lazy::LazyValue,
+		scope::Scope,
+		value::{Lambda, Value},
+	},
 };
 
 #[derive(Clone, Trace)]

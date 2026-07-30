@@ -1,12 +1,10 @@
-use crate::{
-	runtime::{
-		eval::{
-			EvalError, Frame, FrameKind, LocalEvaluator, NativeCtx, NativeFrame,
-			NativePosKind, ThunkResult,
-		},
-		lazy::{LazyValue, LazyValueKind},
-		value::Value,
+use crate::runtime::{
+	eval::{
+		EvalError, Frame, FrameKind, LocalEvaluator, NativeCtx, NativeFrame, NativePosKind,
+		ThunkResult,
 	},
+	lazy::{LazyValue, LazyValueKind},
+	value::Value,
 };
 
 async fn deep_eval_frame(mut ctx: NativeCtx, arg: LazyValue) -> Result<Value, EvalError> {

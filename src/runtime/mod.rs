@@ -7,8 +7,10 @@ pub mod thunk;
 pub mod trace;
 pub mod value;
 
+use std::collections::HashMap;
+
 use crate::{
-	bytecode::Program,
+	bytecode::{CodePos, Program},
 	files::FileLoader,
 	mir::lowerer::MirLowerer,
 	parse::Parser,
@@ -26,6 +28,7 @@ use crate::{
 pub struct Runtime {
 	pub loader: FileLoader,
 	pub program: Program,
+	loaded: HashMap<String, LazyValue>,
 	default_scope: Scope,
 }
 
@@ -35,10 +38,15 @@ impl Runtime {
 			loader,
 			default_scope: top_scope,
 			program: Program::new(),
+			loaded: Default::default(),
 		}
 	}
 
 	pub fn load(&mut self, path: &str) -> Result<LazyValue, Reports> {
+		if let Some(loaded) = self.loaded.get(path) {
+			return Ok(loaded.try_get_value().into());
+		}
+
 		let (file, fid) = self.loader.load(path.as_ref()).unwrap();
 
 		let (expr, reports) = Parser::parse(&*file, fid);
@@ -52,6 +60,7 @@ impl Runtime {
 
 		let expr = self.program.compile(&expr);
 		let expr = LazyValue::uneval(expr, self.default_scope.clone());
+		self.loaded.insert(path.into(), expr.clone());
 		Ok(expr)
 	}
 
