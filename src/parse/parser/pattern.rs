@@ -54,7 +54,12 @@ impl<'a> Parser<'a> {
 				};
 				Node(pattern, start.merge(self.last.1))
 			};
-			let field = ast::AttrPattern { attr, pattern };
+			let default = self.consume_if(Token::Question).then(|| self.parse_expr());
+			let field = ast::AttrPattern {
+				attr,
+				pattern,
+				default,
+			};
 			fields.push(Node(field, start.merge(self.last.1)));
 			if !(self.consume_if(Token::Comma) || self.consume_if(Token::Semicolon)) {
 				break;

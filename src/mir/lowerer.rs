@@ -152,6 +152,7 @@ impl MirLowerer {
 				field.map(|field| mir::AttrPattern {
 					attr: field.attr,
 					pattern: self.lower_pattern(field.pattern),
+					default: field.default.map(|default| self.lower_expr(default)),
 				})
 			})
 			.collect()

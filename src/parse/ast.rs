@@ -5,10 +5,11 @@ pub struct Type<'a> {
 	pub name: Node<&'a str>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug)]
 pub struct AttrPattern<'a> {
 	pub attr: Node<&'a str>,
 	pub pattern: Node<Pattern<'a>>,
+	pub default: Option<Node<Expr<'a>>>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -18,7 +19,7 @@ pub enum PatternListKind {
 	TrailRight,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug)]
 pub enum PatternDestructKind<'a> {
 	AttrSet {
 		fields: Vec<Node<AttrPattern<'a>>>,
@@ -30,7 +31,7 @@ pub enum PatternDestructKind<'a> {
 	},
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug)]
 pub struct Pattern<'a> {
 	pub binding: Option<Node<&'a str>>,
 	pub ty: Option<Node<Type<'a>>>,

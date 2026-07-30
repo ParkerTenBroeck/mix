@@ -24,4 +24,8 @@ impl Fule {
 			}
 		}
 	}
+
+	pub fn remainder(&self) -> Option<NonZeroUsize> {
+		self.0
+	}
 }

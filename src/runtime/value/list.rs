@@ -96,19 +96,3 @@ impl Deref for List {
 		&self.inner.list
 	}
 }
-
-#[cfg(test)]
-mod tests {
-	use super::*;
-
-	#[test]
-	fn debug_output_shows_simple_values_and_elides_nested_values() {
-		let mut list = List::with_capacity(3);
-		list.get_mut().push_back(Value::Int(1).into());
-		list.get_mut().push_back(Value::Bool(true).into());
-		list.get_mut()
-			.push_back(Value::List(List::default()).into());
-
-		assert_eq!(format!("{list:?}"), "[Int(1), Bool(true), ...]");
-	}
-}

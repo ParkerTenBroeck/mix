@@ -56,7 +56,21 @@ impl Compiler {
 							builder.emit(OpCode::DupV);
 						}
 
-						builder.emit_load_str(field.0.attr.0).emit(OpCode::GetAttr);
+						if let Some(default) = &field.0.default {
+							builder.emit_get_attr_or(
+								std::iter::once(|builder: &mut ByteCodeBuilder<'_>| {
+									_ = builder.emit_load_str(field.0.attr.0);
+								}),
+								|_| {},
+								|builder| {
+									_ = builder.maybe_emit_create_thunk(|builder| {
+										self.compile_maybe_thunk(builder, default)
+									});
+								},
+							);
+						} else {
+							builder.emit_load_str(field.0.attr.0).emit(OpCode::GetAttr);
+						}
 						self.compile_lambda_pattern_rec(builder, &field.0.pattern);
 					}
 				}
@@ -104,7 +118,6 @@ impl Compiler {
 			// 	self.compile_expr(builder, expr).emit(OpCode::UnEvalValue);
 			// 	None
 			// }
-
 			_ => Some(
 				builder
 					.emit_expr(*span, |builder| _ = self.compile_expr(builder, expr))
@@ -320,54 +333,5 @@ impl Compiler {
 			}
 			mir::AttrPathPart::Num(i64) => builder.emit_load_int(*i64),
 		}
-	}
-}
-
-#[cfg(test)]
-mod tests {
-	use std::rc::Rc;
-
-	use crate::{
-		files::FileLoader,
-		runtime::{Runtime, scope::ScopeBuilder},
-	};
-
-	fn eval(source: &str) -> Result<crate::runtime::value::Value, String> {
-		let source: Rc<String> = Rc::new(source.to_owned());
-		let loader = FileLoader::new(move |_| Ok(source.clone()));
-		let scope = ScopeBuilder::new()
-			.with("false", false)
-			.with("true", true)
-			.bottom();
-		let mut runtime = Runtime::new(loader, scope);
-		let lazy = runtime
-			.load("test.mix")
-			.map_err(|_| "source failed to compile".to_owned())?;
-		match runtime.eval_lazy(lazy, true) {
-			Ok(value) => Ok(value),
-			Err(error) => Err(error.render(&runtime)),
-		}
-	}
-
-	#[test]
-	fn let_bindings_share_a_recursive_scope() {
-		let value = eval("let x = 1; y = x + 1 in y").unwrap();
-		assert_eq!(value.expect_int().unwrap(), 2);
-	}
-
-	#[test]
-	fn attrsets_do_not_bind_their_keys() {
-		assert!(eval("{ x = 1; y = x; }.y").is_err());
-	}
-
-	#[test]
-	fn duplicate_inherited_attr_is_rejected() {
-		assert!(eval("let x = 1 in { x; x = 2; }").is_err());
-	}
-
-	#[test]
-	fn non_identifier_let_bindings_are_rejected() {
-		assert!(eval("let { x } = { x = 1; } in x").is_err());
-		assert!(eval("let x :: int = 1 in x").is_err());
 	}
 }

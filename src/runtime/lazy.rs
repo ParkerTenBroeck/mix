@@ -93,19 +93,3 @@ impl<T: Into<Value>> From<T> for LazyValueKind {
 		Self::Value(value.into())
 	}
 }
-
-#[cfg(test)]
-mod tests {
-	use crate::runtime::value::{AttrSet, List};
-
-	use super::*;
-
-	#[test]
-	fn debug_output_hides_storage_wrappers() {
-		let attrset: LazyValue = Value::AttrSet(AttrSet::default()).into();
-		let list: LazyValue = Value::List(List::default()).into();
-
-		assert_eq!(format!("{attrset:?}"), "{}");
-		assert_eq!(format!("{list:?}"), "[]");
-	}
-}

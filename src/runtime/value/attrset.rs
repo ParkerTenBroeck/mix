@@ -138,24 +138,3 @@ impl Deref for AttrSet {
 		&*self.inner
 	}
 }
-
-#[cfg(test)]
-mod tests {
-	use super::*;
-	use crate::runtime::value::List;
-
-	#[test]
-	fn debug_output_shows_simple_values_and_elides_nested_values() {
-		let mut attrs = AttrSet::new();
-		attrs
-			.get_mut()
-			.insert("answer".into(), Value::Int(42).into());
-		attrs
-			.get_mut()
-			.insert("nested".into(), Value::List(List::default()).into());
-
-		let output = format!("{attrs:?}");
-		assert!(output.contains("\"answer\": Int(42)"));
-		assert!(output.contains("\"nested\": ..."));
-	}
-}

@@ -205,6 +205,13 @@ impl LocalEvaluator {
 				lhs.get_mut().push_str(&rhs);
 				Ok(Value::String(lhs))
 			}
+			(Value::List(mut lhs), Value::List(rhs)) => {
+				let list = lhs.get_mut();
+				for el in rhs.iter(){
+					list.push_back(el.clone());
+				}
+				Ok(Value::List(lhs))
+			}
 			(lhs, rhs) => checked_numeric_op!(
 				lhs,
 				rhs,

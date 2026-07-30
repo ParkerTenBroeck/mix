@@ -312,7 +312,25 @@ impl<'a> Parser<'a> {
 	fn parse_attr(&mut self) -> Node<ast::Attr<'a>> {
 		let path = self.parse_attr_path();
 
-		let value = self.consume_if(Token::Assign).then(|| self.parse_expr());
+		let value = if self.consume_if(Token::Assign) {
+			Some(self.parse_expr())
+		} else if self.consume_if(Token::Question) {
+			let fallback = self.parse_attr_path();
+			let lhs = match path.0.parts.as_slice() {
+				[Node(ast::AttrPathPart::Ident(name), span)] => Node(ast::Expr::Ident(name), *span),
+				_ => Node(ast::Expr::Ident("<ERROR>"), path.1),
+			};
+			let span = lhs.1.merge(fallback.1);
+			Some(Node(
+				ast::Expr::HasAttr {
+					expr: Box::new(lhs),
+					path: fallback,
+				},
+				span,
+			))
+		} else {
+			None
+		};
 		let span = path.1.merge(self.last.1);
 		Node(ast::Attr { path, value }, span)
 	}
