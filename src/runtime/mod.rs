@@ -10,7 +10,7 @@ pub mod value;
 use std::collections::HashMap;
 
 use crate::{
-	bytecode::{CodePos, Program},
+	bytecode::Program,
 	files::FileLoader,
 	mir::lowerer::MirLowerer,
 	parse::Parser,

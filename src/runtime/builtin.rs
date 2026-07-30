@@ -115,7 +115,7 @@ impl NativeLambdaDyn for Map<()> {
 		"map".into()
 	}
 
-	fn begin(&self, runtime: &mut Runtime, arg: LazyValue) -> NativeLambdaResult {
+	fn begin(&self, _: &mut Runtime, arg: LazyValue) -> NativeLambdaResult {
 		NativeLambdaResult::Value(NativeLambda::new(Map(arg)).into())
 	}
 }
