@@ -1,9 +1,8 @@
 use crate::runtime::{
-	eval::NativeLambdaDyn,
-	value::{AttrSet, Lambda, NativeLambda, StringKind, Value},
+	builtin::Trace, eval::NativeLambdaDyn, value::{AttrSet, Lambda, NativeLambda, StringKind, Value},
 };
 
-use super::{Import, Map, Match, MkList, ToJson};
+use super::*;
 
 #[derive(Clone, Copy, Debug)]
 pub struct BuiltinsBuilder {
@@ -45,6 +44,7 @@ impl BuiltinsBuilder {
 		builtin!(MkList::new());
 		builtin!(Map::new());
 		builtin!(ToJson);
+		builtin!(Trace);
 		if self.allow_imports {
 			builtin!(Import);
 		}

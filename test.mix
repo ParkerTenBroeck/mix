@@ -1,6 +1,45 @@
-#builtins.mkList (x: x*x) 10
+let
+  ok = value: {ok=value};
+  err = value: {err=value};
+  faital = value: {faital=value};
 
-{
-    foo.bar.baz = "hello";
-    list = [1, 2, {x=1,y=2/0}];
-}
+  
+  
+  lex = let
+    mkMatcher = kind: regex: 
+                  let 
+                    matcher = builtins.match ("^(\s*)("+regex+")(.*)") 
+                  in input: 
+                    let
+                      matched' = matcher input;
+                      matched = builtins.trace {kind, matched', input} matched';
+                    in
+                      if matched.len == 0 
+                      then err false 
+                      else ok {tok={kind,value=matched.2}, next = lex matched.3};
+                    
+    eof' = let 
+              matcher = builtins.match "^(\s*)$" 
+            in input: let
+              matched = matcher input;
+            in if matched.len == 0 
+                then err false 
+                else ok {tok={kind="eof",value=matched.1}};
+                
+    num' = mkMatcher "num" "[0-9]+";
+    ident' = mkMatcher "ident" "[a-zA-Z][a-zA-Z0-9'_]*";
+    plus' = mkMatcher "plus" "\+";
+  in str: 
+    let 
+      num = num' str;
+      ident = ident' str;
+      plus = plus' str;
+      eof = eof' str;
+    in 
+      if num?ok then num
+      else if ident?ok then ident
+      else if plus?ok then plus
+      else if eof?ok then eof
+      else err ("Failed to match " + str) 
+
+in lex "3 meow 3'_"
