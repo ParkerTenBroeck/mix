@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 
 use crate::runtime::{
-	eval::{EvalError, NativeCtx, NativeLambdaAsync, NativeLambdaDyn},
+	eval::{EvalError, NativeCtx, NativeLambdaAsync},
 	lazy::LazyValue,
 	pretty::PrettyValue,
 	value::{NativeLambda, Value},
