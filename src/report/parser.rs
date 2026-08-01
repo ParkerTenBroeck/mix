@@ -85,6 +85,48 @@ pub struct UnexpectedTokenExprError<'a> {
 	pub token: Token<'a>,
 	pub expected: Option<Token<'a>>,
 }
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ExpectedTokenError<'a> {
+	pub span: Span,
+	pub got: Token<'a>,
+	pub expected: Token<'a>,
+}
+
+impl<'a> From<ExpectedTokenError<'a>> for Report {
+	fn from(err: ExpectedTokenError<'a>) -> Self {
+		Self {
+			level: ReportLevel::Error,
+			span: err.span,
+			title: Cow::Owned(format!("expected {:#} but got {:#}", err.expected, err.got)),
+			annotations: vec![ReportAnnotation::primary(err.span)],
+			helps: vec![],
+		}
+	}
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ExpectedFractionDigitsError<'a> {
+	pub span: Span,
+	pub got: Token<'a>,
+}
+
+impl<'a> From<ExpectedFractionDigitsError<'a>> for Report {
+	fn from(err: ExpectedFractionDigitsError<'a>) -> Self {
+		Self {
+			level: ReportLevel::Error,
+			span: err.span,
+			title: Cow::Owned(format!(
+				"expected digits after decimal point but got {:#}",
+				err.got
+			)),
+			annotations: vec![ReportAnnotation::primary(err.span)],
+			helps: vec![
+				ReportHelp::new("add a fractional part").with_patch(err.span.before(), "0"),
+			],
+		}
+	}
+}
 impl<'a> From<UnexpectedTokenExprError<'a>> for Report {
 	fn from(err: UnexpectedTokenExprError<'a>) -> Self {
 		if let Some(expected) = err.expected {

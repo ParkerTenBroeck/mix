@@ -2,8 +2,8 @@ use dumpster::{Trace, unsync::Gc};
 
 use crate::runtime::{
 	LazyValue,
-	value::NativeLambda,
-	value::{AttrSet, AttrSetInner, Lambda, StringKind, Value},
+	builtin::BuiltinsBuilder,
+	value::{AttrSetInner, StringKind, Value},
 };
 
 #[derive(Clone, Default, Debug, Trace)]
@@ -61,31 +61,24 @@ impl ScopeBuilder {
 	}
 
 	pub fn with_builtins(mut self) -> Self {
-		use super::builtin::*;
+		self.add_builtins(true);
+		self
+	}
 
-		let mut builtins = AttrSet::new();
+	/// Add the standard builtins, optionally exposing the filesystem-backed
+	/// `builtins.import` function.
+	pub fn with_builtins_and_imports(mut self, allow_imports: bool) -> Self {
+		self.add_builtins(allow_imports);
+		self
+	}
 
-		macro_rules! builtin {
-			($expr:expr) => {{
-				let meow = $expr;
-				use crate::runtime::eval::NativeLambdaDyn;
-				builtins.get_mut().insert(
-					StringKind::String(meow.identifier().into()),
-					Value::Lambda(Lambda::NativeLambda(NativeLambda::new(meow))).into(),
-				);
-			}};
-		}
-		builtin!(Match::new());
-		builtin!(MkList::new());
-		builtin!(Map::new());
-		builtin!(Import);
+	fn add_builtins(&mut self, allow_imports: bool) {
+		let builtins = BuiltinsBuilder::new().allow_imports(allow_imports).build();
 
 		self.scope.insert(
 			StringKind::String("builtins".into()),
 			Value::AttrSet(builtins).into(),
 		);
-
-		self
 	}
 
 	pub fn with(mut self, key: impl Into<StringKind>, value: impl Into<LazyValue>) -> Self {

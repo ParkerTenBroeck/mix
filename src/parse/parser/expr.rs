@@ -273,8 +273,15 @@ impl<'a> Parser<'a> {
 				}
 			}
 			None => {
-				let Token::Num(start) = self.next() else {
-					todo!()
+				let token = self.curr.0;
+				let span = self.curr.1;
+				let start = match self.next() {
+					Token::Num(start) => start,
+					_ => {
+						self.reports
+							.emit(ExpectedFractionDigitsError { span, got: token });
+						"0"
+					}
 				};
 				format!(".{start}")
 			}
@@ -369,7 +376,11 @@ impl<'a> Parser<'a> {
 				Token::Dollar => {
 					self.next();
 					if !self.consume_if(Token::LBrace) {
-						todo!()
+						self.reports.emit(ExpectedTokenError {
+							span: self.curr.1,
+							got: self.curr.0,
+							expected: Token::LBrace,
+						});
 					}
 
 					let expr = self.parse_expr();

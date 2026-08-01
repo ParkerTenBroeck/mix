@@ -3,11 +3,16 @@ name = "mix"
 version = "0.1.0"
 edition = "2024"
 
+[workspace]
+members = ["cli"]
+default-members = [".", "cli"]
+
 [dependencies]
 annotate-snippets = "*"
 dumpster = "*"
 rustc-hash = "*"
 serde = { version = "*", features = ["derive", "rc"] }
+serde_json = "1"
 regex = "*"
 
 [profile.release]

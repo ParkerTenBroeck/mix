@@ -27,8 +27,7 @@ impl MirLowerer {
 				ast::AttrPathPart::Ident(name) | ast::AttrPathPart::Str(name) => {
 					Some(Node(name, part.1))
 				}
-				ast::AttrPathPart::Expr(_) => None,
-				_ => todo!(),
+				ast::AttrPathPart::Expr(_) | ast::AttrPathPart::Num(_) => None,
 			})
 			.collect()
 	}

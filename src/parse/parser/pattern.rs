@@ -11,7 +11,15 @@ impl<'a> Parser<'a> {
 	fn parse_attr_destruct(&mut self) -> ast::PatternDestructKind<'a> {
 		let start = self.curr.1;
 		if !self.consume_if(Token::LBrace) {
-			todo!()
+			self.reports.emit(ExpectedTokenError {
+				span: self.curr.1,
+				got: self.curr.0,
+				expected: Token::LBrace,
+			});
+			return ast::PatternDestructKind::AttrSet {
+				fields: vec![],
+				strict: false,
+			};
 		}
 		let mut fields = Vec::new();
 		let mut strict = true;
@@ -73,7 +81,15 @@ impl<'a> Parser<'a> {
 	fn parse_list_destruct(&mut self) -> ast::PatternDestructKind<'a> {
 		let start = self.curr.1;
 		if !self.consume_if(Token::LBrack) {
-			todo!()
+			self.reports.emit(ExpectedTokenError {
+				span: self.curr.1,
+				got: self.curr.0,
+				expected: Token::LBrack,
+			});
+			return ast::PatternDestructKind::List {
+				elements: vec![],
+				kind: ast::PatternListKind::Strict,
+			};
 		}
 		let mut elements = Vec::new();
 		let mut kind = ast::PatternListKind::Strict;
