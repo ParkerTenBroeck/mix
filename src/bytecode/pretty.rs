@@ -116,7 +116,10 @@ fn format_op(program: &Program, pos: CodePos, op: OpCode) -> String {
 		OpCode::LoadLambda(lambda) => {
 			format!("LoadLambda #{}", lambda.index())
 		}
-		OpCode::LoadStr(id) => format!("LoadStr #{} {:?}", id.index(), &*program.get_str(id)),
+		OpCode::LoadStr(id) => match program.get_str(id) {
+			Some(value) => format!("LoadStr #{} {:?}", id.index(), &*value),
+			None => format!("LoadStr #{} <invalid string id>", id.index()),
+		},
 		OpCode::LoadInt(int) => format!("LoadInt {int}"),
 		OpCode::LoadFloat(float) => format!("LoadFloat {float}"),
 		OpCode::LoadBool(value) => format!("LoadBool {value}"),

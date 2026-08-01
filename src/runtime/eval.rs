@@ -46,7 +46,11 @@ impl Evaluator {
 			local: Default::default(),
 			frames: vec![],
 		};
-		match myself.local.eval_lazy(runtime, lazy, deep).unwrap() {
+		let initial = myself
+			.local
+			.eval_lazy(runtime, lazy, deep)
+			.map_err(|error| ErrorTrace::build(runtime, &myself, error))?;
+		match initial {
 			ThunkResult::Value(value) => myself.local.value_stack.push(value),
 			ThunkResult::Frame(frame) => myself.frames.push(frame),
 		}
@@ -102,7 +106,9 @@ impl Evaluator {
 			if let Some(thunk) = &frame.thunk
 				&& matches!(res, EvalStep::Ret)
 			{
-				thunk.eval_end(self.local.peek_value()?.clone()).unwrap();
+				thunk
+					.eval_end(self.local.peek_value()?.clone())
+					.map_err(|_| EvalError::ThunkEval(ThunkEvalErr::AlreadyEvaluated))?;
 			}
 
 			match res {

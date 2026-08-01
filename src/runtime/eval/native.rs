@@ -127,7 +127,7 @@ impl NativeCtx {
 		.await;
 		assert_eq!(vtable, &VTABLE);
 
-		func(unsafe { data.cast_mut().cast::<NativeCtxData>().as_mut().unwrap() })
+		func(unsafe { data.cast_mut().cast::<NativeCtxData>().as_mut_unchecked() })
 	}
 
 	pub async fn runtime<T>(&mut self, func: impl FnOnce(&mut Runtime) -> T) -> T {

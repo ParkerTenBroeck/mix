@@ -115,10 +115,10 @@ impl<'a> Parser<'a> {
 					};
 				}
 			} else {
-				if kind == ast::PatternListKind::TrailRight {
-					self.reports.emit(NonTrailingListTrail {
-						span: trail_span.unwrap(),
-					});
+				if kind == ast::PatternListKind::TrailRight
+					&& let Some(span) = trail_span
+				{
+					self.reports.emit(NonTrailingListTrail { span });
 				}
 				elements.push(self.parse_pattern());
 			}

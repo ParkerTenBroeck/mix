@@ -8,7 +8,7 @@ impl Fule {
 	}
 
 	pub fn limited(amount: usize) -> Self {
-		Self(Some(NonZeroUsize::new(amount.saturating_add(1))).unwrap())
+		Self(Some(NonZeroUsize::new(amount).unwrap_or(NonZeroUsize::MIN)))
 	}
 
 	pub fn fule(&mut self) -> bool {

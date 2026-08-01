@@ -4,8 +4,14 @@ use crate::runtime::{eval::ThunkEvalErr, value::ValueType};
 
 #[derive(Debug)]
 pub enum EvalError {
-	TypeMismatch { expected: ValueType, got: ValueType },
-	BinOpTypeMismatch { details: Cow<'static, str> },
+	Custom(Cow<'static, str>),
+	TypeMismatch {
+		expected: ValueType,
+		got: ValueType,
+	},
+	BinOpTypeMismatch {
+		details: Cow<'static, str>,
+	},
 	Arithmetic(Cow<'static, str>),
 	MissingAttr(Cow<'static, str>),
 	MissingBinding(Cow<'static, str>),
@@ -13,3 +19,4 @@ pub enum EvalError {
 	ThunkEval(ThunkEvalErr),
 	ByteCode(&'static str),
 }
+

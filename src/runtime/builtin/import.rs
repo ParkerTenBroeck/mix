@@ -26,12 +26,12 @@ impl NativeLambdaAsync for Import {
 					.map_err(|error| error.into_owned())?;
 				runtime
 					.load(&path)
-					.map_err(|reports| reports.render(&runtime.loader.files()).join("\n"))
+					.map_err(|error| error.render(&runtime.loader))
 			})
 			.await;
 		match result {
 			Ok(value) => ctx.eval_lazy(value).await,
-			Err(error) => Err(EvalError::Internal(error.into())),
+			Err(error) => Err(EvalError::Custom(error.into())),
 		}
 	}
 }

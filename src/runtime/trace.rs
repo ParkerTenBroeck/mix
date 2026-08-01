@@ -22,6 +22,7 @@ impl ErrorTrace {
 		let renderer =
 			Renderer::styled().decor_style(annotate_snippets::renderer::DecorStyle::Unicode);
 		let title = match &self.kind {
+			EvalError::Custom(message) => message.to_string(),
             EvalError::TypeMismatch { expected, got } => {
                 format!("type mismatch: expected {expected}, got {got}")
             }

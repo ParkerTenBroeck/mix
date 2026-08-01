@@ -7,7 +7,7 @@ pub mod thunk;
 pub mod trace;
 pub mod value;
 
-use std::collections::HashMap;
+use std::{borrow::Cow, collections::HashMap};
 
 use crate::{
 	bytecode::Program,
@@ -32,6 +32,21 @@ pub struct Runtime {
 	default_scope: Scope,
 }
 
+#[derive(Clone, Debug)]
+pub enum LoadError {
+	Io(Cow<'static, str>),
+	Reports(Reports),
+}
+
+impl LoadError {
+	pub fn render(&self, loader: &FileLoader) -> String {
+		match self {
+			Self::Io(error) => error.to_string(),
+			Self::Reports(reports) => reports.render(&loader.files()).join("\n"),
+		}
+	}
+}
+
 impl Runtime {
 	pub fn new(loader: FileLoader, top_scope: Scope) -> Self {
 		Self {
@@ -42,20 +57,20 @@ impl Runtime {
 		}
 	}
 
-	pub fn load(&mut self, path: &str) -> Result<LazyValue, Reports> {
+	pub fn load(&mut self, path: &str) -> Result<LazyValue, LoadError> {
 		if let Some(loaded) = self.loaded.get(path) {
 			return Ok(loaded.try_get_value().into());
 		}
 
-		let (file, fid) = self.loader.load(path.as_ref()).unwrap();
+		let (file, fid) = self.loader.load(path.as_ref()).map_err(LoadError::Io)?;
 
 		let (expr, reports) = Parser::parse(&*file, fid);
 		let Ok(expr) = expr else {
-			return Err(reports);
+			return Err(LoadError::Reports(reports));
 		};
 		let (expr, reports) = MirLowerer::new(reports).lower(expr);
 		let Ok(expr) = expr else {
-			return Err(reports);
+			return Err(LoadError::Reports(reports));
 		};
 
 		let expr = self.program.compile(&expr);
@@ -67,16 +82,13 @@ impl Runtime {
 	pub fn eval_lazy(&mut self, lazy: LazyValue, deep: bool) -> Result<Value, ErrorTrace> {
 		let mut eval = Evaluator::begin_eval(self, lazy, deep)?;
 		let res = eval.run(self, &mut Fule::unlimited());
-		Ok(res
-			.map_err(|err| ErrorTrace::build(self, &eval, err))?
-			.unwrap())
+		res.map_err(|err| ErrorTrace::build(self, &eval, err))?
+			.ok_or_else(|| {
+				ErrorTrace::build(
+					self,
+					&eval,
+					eval::EvalError::ByteCode("missing result value"),
+				)
+			})
 	}
-
-	// pub fn eval_lazy(&mut self, lazy: LazyValue, deep: bool) -> Result<Value, ErrorTrace> {
-	// 	let mut eval = Evaluator::begin_eval(self, lazy, deep)?;
-	// 	let res = eval.run(self, Fule::unlimited());
-	// 	Ok(res
-	// 		.map_err(|err| ErrorTrace::build(self, &eval, err))?
-	// 		.unwrap())
-	// }
 }

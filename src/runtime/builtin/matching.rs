@@ -30,7 +30,7 @@ impl NativeLambdaAsync for Match<()> {
 	async fn apply(self, mut ctx: NativeCtx, arg: LazyValue) -> Result<Value, EvalError> {
 		let pattern = ctx.eval_lazy(arg).await?.expect_string()?;
 		let regex = regex::Regex::new(&pattern)
-			.map_err(|error| EvalError::Internal(error.to_string().into()))?;
+			.map_err(|error| EvalError::Custom(format!("invalid regex: {error}").into()))?;
 		Ok(NativeLambda::new(Match(regex)).into())
 	}
 }

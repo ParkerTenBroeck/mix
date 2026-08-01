@@ -74,5 +74,5 @@ fn lazy_to_json(
 }
 
 fn json_error(message: &str) -> EvalError {
-	EvalError::Internal(format!("cannot convert value to JSON: {message}").into())
+	EvalError::Custom(format!("cannot convert value to JSON: {message}").into())
 }

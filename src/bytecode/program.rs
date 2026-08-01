@@ -105,10 +105,11 @@ impl Program {
 		Some((*self.code.get(loc.0)?, CodePos(loc.0 + 1)))
 	}
 
-	pub fn get_str(&self, str: StrId) -> crate::runtime::value::StringKind {
-		crate::runtime::value::StringKind::Interned(
-			self.strings.get(str.0.get() - 1).unwrap().clone(),
-		)
+	pub fn get_str(&self, str: StrId) -> Option<crate::runtime::value::StringKind> {
+		self.strings
+			.get(str.0.get() - 1)
+			.cloned()
+			.map(crate::runtime::value::StringKind::Interned)
 	}
 
 	pub fn get_lambda(&self, lambda: LambdaId) -> Option<&Lambda> {
@@ -139,7 +140,7 @@ impl Program {
 impl ProgramBuilder for Program {
 	fn emit_str(&mut self, str: &str) -> StrId {
 		self.strings.push(Rc::new(str.into()));
-		StrId(NonZeroUsize::new(self.strings.len()).unwrap())
+		StrId(NonZeroUsize::new(self.strings.len()).unwrap_or(NonZeroUsize::MIN))
 	}
 
 	fn emit_expr(
@@ -156,7 +157,8 @@ impl ProgramBuilder for Program {
 		let start = CodePos(self.code.len());
 		let end = CodePos(self.code.len() + built_code.len());
 		self.expressions.push(Expr { start, end, span });
-		let expr_id = ExprId(NonZeroUsize::new(self.expressions.len()).unwrap());
+		let expr_id =
+			ExprId(NonZeroUsize::new(self.expressions.len()).unwrap_or(NonZeroUsize::MIN));
 
 		for op in built_code {
 			self.code.push(op);
@@ -173,7 +175,7 @@ impl ProgramBuilder for Program {
 		let (_, code) = self.emit_expr(span, expr);
 		self.lambdas.push(Lambda { code, span });
 		(
-			LambdaId(NonZeroUsize::new(self.lambdas.len()).unwrap()),
+			LambdaId(NonZeroUsize::new(self.lambdas.len()).unwrap_or(NonZeroUsize::MIN)),
 			code,
 		)
 	}

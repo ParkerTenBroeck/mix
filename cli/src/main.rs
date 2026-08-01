@@ -136,14 +136,9 @@ fn run(cli: Cli) -> Result<(), String> {
 		.bottom();
 	let mut runtime = Runtime::new(loader.clone(), scope);
 	let entry = entry.to_string_lossy();
-	let lazy = runtime.load(&entry).map_err(|reports| {
-		reports
-			.render(&loader.files())
-			.into_iter()
-			.map(|report| report.to_string())
-			.collect::<Vec<_>>()
-			.join("\n")
-	})?;
+	let lazy = runtime
+		.load(&entry)
+		.map_err(|error| error.render(&loader))?;
 
 	if cli.dump_bytecode {
 		eprintln!("{}", PrettyProgram::new(&runtime.program, &loader));

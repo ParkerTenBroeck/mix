@@ -163,7 +163,12 @@ impl LocalEvaluator {
 				};
 				self.push_value(Value::Lambda(lambda))?;
 			}
-			OpCode::LoadStr(str) => self.push_value(Value::String(runtime.program.get_str(str)))?,
+			OpCode::LoadStr(str) => self.push_value(Value::String(
+				runtime
+					.program
+					.get_str(str)
+					.ok_or(EvalError::ByteCode("invalid string id"))?,
+			))?,
 			OpCode::LoadInt(int) => self.push_value(Value::Int(int))?,
 			OpCode::LoadFloat(float) => self.push_value(Value::Float(float))?,
 			OpCode::LoadBool(bool) => self.push_value(Value::Bool(bool))?,
