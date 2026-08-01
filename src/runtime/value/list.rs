@@ -82,7 +82,7 @@ impl List {
 	///
 	/// doing otherwise will cause incorrect (but not fatal or undefined) behavior when the VM tries to deeply evaluate it
 	pub fn set_deeply_evaluated(&self) {
-		self.inner.deep.set(false);
+		self.inner.deep.set(true);
 	}
 
 	pub fn get_mut(&mut self) -> &mut VecDeque<LazyValue> {
