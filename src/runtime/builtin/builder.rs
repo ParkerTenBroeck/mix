@@ -1,5 +1,7 @@
 use crate::runtime::{
-	builtin::Trace, eval::NativeLambdaDyn, value::{AttrSet, Lambda, NativeLambda, StringKind, Value},
+	builtin::Trace,
+	eval::NativeLambdaDyn,
+	value::{AttrSet, Lambda, NativeLambda, StringKind, Value},
 };
 
 use super::*;

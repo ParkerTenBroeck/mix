@@ -1,7 +1,10 @@
 use std::borrow::Cow;
 
 use crate::runtime::{
-	eval::{EvalError, NativeCtx, NativeLambdaAsync, NativeLambdaDyn}, lazy::LazyValue, pretty::PrettyValue, value::{NativeLambda, Value},
+	eval::{EvalError, NativeCtx, NativeLambdaAsync, NativeLambdaDyn},
+	lazy::LazyValue,
+	pretty::PrettyValue,
+	value::{NativeLambda, Value},
 };
 
 #[derive(dumpster::Trace, Clone)]
@@ -14,10 +17,11 @@ impl NativeLambdaAsync for Trace {
 
 	async fn apply(self, mut ctx: NativeCtx, arg: LazyValue) -> Result<Value, EvalError> {
 		let value = ctx.eval_lazy_deep(arg).await?;
-		
-		ctx.runtime(|runtime|{	
+
+		ctx.runtime(|runtime| {
 			println!("{}", PrettyValue::new(runtime, &value));
-		}).await;
+		})
+		.await;
 
 		Ok(NativeLambda::new(Trace2).into())
 	}
@@ -26,12 +30,11 @@ impl NativeLambdaAsync for Trace {
 #[derive(dumpster::Trace, Clone)]
 struct Trace2;
 
-
 impl NativeLambdaAsync for Trace2 {
 	fn identifier(&self) -> Cow<'static, str> {
 		"trace".into()
 	}
-	
+
 	async fn apply(self, mut ctx: NativeCtx, arg: LazyValue) -> Result<Value, EvalError> {
 		ctx.eval_lazy(arg).await
 	}

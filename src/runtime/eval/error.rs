@@ -1,17 +1,16 @@
 use std::borrow::Cow;
 
-use crate::runtime::{eval::ThunkEvalErr, value::ValueType};
+use crate::{
+	report::Reports,
+	runtime::{eval::ThunkEvalErr, value::ValueType},
+};
 
 #[derive(Debug)]
 pub enum EvalError {
 	Custom(Cow<'static, str>),
-	TypeMismatch {
-		expected: ValueType,
-		got: ValueType,
-	},
-	BinOpTypeMismatch {
-		details: Cow<'static, str>,
-	},
+	Reports(Reports),
+	TypeMismatch { expected: ValueType, got: ValueType },
+	BinOpTypeMismatch { details: Cow<'static, str> },
 	Arithmetic(Cow<'static, str>),
 	MissingAttr(Cow<'static, str>),
 	MissingBinding(Cow<'static, str>),
@@ -19,4 +18,3 @@ pub enum EvalError {
 	ThunkEval(ThunkEvalErr),
 	ByteCode(&'static str),
 }
-

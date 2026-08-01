@@ -18,72 +18,46 @@ impl ErrorTrace {
 	pub fn render(&self, runtime: &Runtime) -> String {
 		use annotate_snippets::{Group, Level, Renderer};
 		let files = &runtime.loader.files();
+		let nested_reports = match &self.kind {
+			EvalError::Reports(reports) => Some(reports.render(&files).join("\n")),
+			_ => None,
+		};
 
 		let renderer =
 			Renderer::styled().decor_style(annotate_snippets::renderer::DecorStyle::Unicode);
-		let title = match &self.kind {
-			EvalError::Custom(message) => message.to_string(),
-            EvalError::TypeMismatch { expected, got } => {
-                format!("type mismatch: expected {expected}, got {got}")
-            }
-            EvalError::BinOpTypeMismatch { details } => details.to_string(),
-            EvalError::Arithmetic(message) => message.to_string(),
-            EvalError::MissingAttr(message) => message.to_string(),
-            EvalError::MissingBinding(message) => message.to_string(),
-            EvalError::Internal(message) => format!("internal runtime error: {message}"),
-            EvalError::ByteCode(message) => format!("bytecode error: {message}"),
-            EvalError::ThunkEval(thunk_eval_err) => match thunk_eval_err {
-                ThunkEvalErr::InfiniteRec => "infinite recursion",
-                ThunkEvalErr::NotConstructed => "trying to access partially constructed value.. this indicates an error in the compiler/bytecode/runtime",
-                ThunkEvalErr::AlreadyEvaluated => "trying to re-evaluate already evaluated thunk.. this indicates an error in the compiler/bytecode/runtime",
-            }.into(),
-        };
+		let title = error_title(&self.kind);
 
-		let mut frames = self.stack.iter().rev();
-		let Some(frame) = frames.next() else {
+		if self.stack.is_empty() {
+			if let Some(reports) = nested_reports {
+				return reports;
+			}
 			let group = Group::with_title(Level::ERROR.primary_title(title));
 			return renderer.render(&[group]);
-		};
+		}
 
-		let title = match &frame.kind {
-			FrameKind::NativeFn(name) => format!("{title} (in native function \"{name}\")"),
-			_ => title,
-		};
-		let mut groups = vec![render_frame(
-			&files,
-			frame,
-			Level::ERROR.primary_title(title),
-			match &frame.kind {
-				FrameKind::Fn => "function call failed here",
-				FrameKind::NativeFn(_) => "native function call failed",
-				FrameKind::LazyEval => "evaluation failed here",
-				FrameKind::DeepEvalValue => "deep evaluation failed here",
-				FrameKind::DeepEvalExpr => "deep evaluation failed here",
-				FrameKind::DeepEval => "deep evaluation failed",
-			},
-		)];
-
-		groups.extend(frames.map(|frame| {
-			let title = match &frame.kind {
-				FrameKind::Fn => "called from here".into(),
-				FrameKind::NativeFn(name) => format!("while calling native function \"{name}\""),
-				FrameKind::LazyEval => "while evaluating this expression".into(),
-				FrameKind::DeepEvalValue => "while deeply evaluating this value".into(),
-				FrameKind::DeepEvalExpr => "while deeply evaluating this expression".into(),
-				FrameKind::DeepEval => "while deeply evaluating a value".into(),
+		let has_nested_report = nested_reports.is_some();
+		let last = self.stack.len() - 1;
+		let mut groups = Vec::with_capacity(self.stack.len());
+		for (index, frame) in self.stack.iter().enumerate() {
+			let is_error = index == last && !has_nested_report;
+			let (frame_title, label) = if is_error {
+				(frame.kind.error_title(&title), frame.kind.error_label())
+			} else {
+				(frame.kind.context_title(), frame.kind.context_label())
 			};
-			let label = match &frame.kind {
-				FrameKind::Fn => "function call",
-				FrameKind::NativeFn(_) => "native function call",
-				FrameKind::LazyEval => "lazy value forced here",
-				FrameKind::DeepEvalValue => "value created here",
-				FrameKind::DeepEvalExpr => "expression evaluated here",
-				FrameKind::DeepEval => "deep evaluation",
+			let annotation = if is_error {
+				Level::ERROR.primary_title(frame_title)
+			} else {
+				Level::ERROR.secondary_title(frame_title)
 			};
-			render_frame(&files, frame, Level::ERROR.secondary_title(title), label)
-		}));
+			groups.push(render_frame(&files, frame, annotation, label));
+		}
 
-		renderer.render(&groups)
+		let trace = renderer.render(&groups);
+		match nested_reports {
+			Some(reports) => format!("{trace}\n{reports}"),
+			None => trace,
+		}
 	}
 
 	pub fn build(runtime: &Runtime, eval: &Evaluator, kind: EvalError) -> Self {
@@ -98,6 +72,27 @@ impl ErrorTrace {
 			.iter()
 			.filter_map(|frame| frame_info(runtime, frame))
 			.collect()
+	}
+}
+
+fn error_title(error: &EvalError) -> String {
+	match error {
+		EvalError::Custom(message) => message.to_string(),
+		EvalError::Reports(_) => "evaluation failed".into(),
+		EvalError::TypeMismatch { expected, got } => {
+			format!("type mismatch: expected {expected}, got {got}")
+		}
+		EvalError::BinOpTypeMismatch { details } => details.to_string(),
+		EvalError::Arithmetic(message)
+		| EvalError::MissingAttr(message)
+		| EvalError::MissingBinding(message) => message.to_string(),
+		EvalError::Internal(message) => format!("internal runtime error: {message}"),
+		EvalError::ByteCode(message) => format!("bytecode error: {message}"),
+		EvalError::ThunkEval(ThunkEvalErr::InfiniteRec) => "infinite recursion".into(),
+		EvalError::ThunkEval(ThunkEvalErr::NotConstructed) =>
+			"trying to access partially constructed value; this indicates a compiler or runtime error".into(),
+		EvalError::ThunkEval(ThunkEvalErr::AlreadyEvaluated) =>
+			"trying to re-evaluate an evaluated thunk; this indicates a compiler or runtime error".into(),
 	}
 }
 
@@ -161,6 +156,47 @@ pub enum FrameKind {
 	DeepEvalValue,
 	DeepEvalExpr,
 	DeepEval,
+}
+
+impl FrameKind {
+	fn context_title(&self) -> String {
+		match self {
+			Self::Fn => "called from here".into(),
+			Self::NativeFn(name) => format!("while calling native function \"{name}\""),
+			Self::LazyEval => "while evaluating this expression".into(),
+			Self::DeepEvalValue => "while deeply evaluating this value".into(),
+			Self::DeepEvalExpr => "while deeply evaluating this expression".into(),
+			Self::DeepEval => "while deeply evaluating a value".into(),
+		}
+	}
+
+	fn context_label(&self) -> &'static str {
+		match self {
+			Self::Fn => "function call",
+			Self::NativeFn(_) => "native function call",
+			Self::LazyEval => "lazy value forced here",
+			Self::DeepEvalValue => "value created here",
+			Self::DeepEvalExpr => "expression evaluated here",
+			Self::DeepEval => "deep evaluation",
+		}
+	}
+
+	fn error_title(&self, title: &str) -> String {
+		match self {
+			Self::NativeFn(name) => format!("{title} (in native function \"{name}\")"),
+			_ => title.to_owned(),
+		}
+	}
+
+	fn error_label(&self) -> &'static str {
+		match self {
+			Self::Fn => "function call failed here",
+			Self::NativeFn(_) => "native function call failed",
+			Self::LazyEval => "evaluation failed here",
+			Self::DeepEvalValue | Self::DeepEvalExpr => "deep evaluation failed here",
+			Self::DeepEval => "deep evaluation failed",
+		}
+	}
 }
 
 pub struct FrameInfo {

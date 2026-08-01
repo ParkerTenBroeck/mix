@@ -4,11 +4,10 @@ let
   faital = value: {faital=value};
 
   
-  
   lex = let
     mkMatcher = kind: regex: 
                   let 
-                    matcher = builtins.match ("^(\s*)("+regex+")(.*)") 
+                    matcher = builtins.match ("^(\s*)("+regex+")(.*)$") 
                   in input: 
                     let
                       matched' = matcher input;
