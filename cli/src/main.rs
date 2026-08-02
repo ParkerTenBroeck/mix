@@ -6,10 +6,13 @@ use std::{
 	rc::Rc,
 };
 
-use clap::{ArgAction, Parser, ValueEnum};
+use clap::{ArgAction, Parser, Subcommand, ValueEnum};
 use mix::{
 	bytecode::PrettyProgram,
 	files::FileLoader,
+	formatter::{AttrSeparatorStyle, FormatOptions, IndentStyle, SeparatorStyle, format_ast},
+	lex::{Lexer, Token},
+	parse::Parser as MixParser,
 	runtime::{
 		Runtime,
 		lazy::{LazyValue, LazyValueKind},
@@ -27,10 +30,12 @@ const STDIN_NAME: &str = "<stdin>";
 	name = "mix",
 	version,
 	about = "Evaluate Mix expressions and files",
-	arg_required_else_help = true,
-	group(clap::ArgGroup::new("input").required(true).args(["file", "expr"]))
+	arg_required_else_help = true
 )]
 struct Cli {
+	#[command(subcommand)]
+	command: Option<Command>,
+
 	/// A Mix source file to evaluate. Use '-' to read stdin.
 	#[arg(value_name = "FILE", conflicts_with = "expr")]
 	file: Option<PathBuf>,
@@ -64,6 +69,78 @@ struct Cli {
 	show_lazy: bool,
 }
 
+#[derive(Debug, Subcommand)]
+enum Command {
+	/// Format Mix source using the parsed AST.
+	Fmt(FmtArgs),
+}
+
+#[derive(Debug, clap::Args)]
+struct FmtArgs {
+	/// Source file to format, or '-' for stdin.
+	#[arg(value_name = "FILE", default_value = "-")]
+	file: PathBuf,
+
+	/// Check formatting without writing changes.
+	#[arg(long, conflicts_with = "stdout")]
+	check: bool,
+
+	/// Print formatted source instead of updating the file.
+	#[arg(long)]
+	stdout: bool,
+
+	/// Indentation characters to use.
+	#[arg(long, value_enum, default_value_t = CliIndentStyle::Spaces)]
+	indent: CliIndentStyle,
+
+	/// Spaces per indentation level; ignored with --indent tabs.
+	#[arg(long, default_value_t = 2)]
+	indent_width: usize,
+
+	/// Separator used between and after attribute definitions.
+	#[arg(long, value_enum, default_value_t = CliAttrSeparator::Smart)]
+	attr_separator: CliAttrSeparator,
+
+	/// Maximum line width for smart inline attribute sets.
+	#[arg(long, default_value_t = 80)]
+	max_inline_width: usize,
+
+	/// Separator used between and after let bindings.
+	#[arg(long, value_enum, default_value_t = CliSeparator::Semicolon)]
+	let_separator: CliSeparator,
+
+	/// Separator used between attribute-pattern fields.
+	#[arg(long, value_enum, default_value_t = CliSeparator::Comma)]
+	pattern_separator: CliSeparator,
+
+	/// Omit a separator after the final item in a block.
+	#[arg(long)]
+	no_trailing_separator: bool,
+
+	/// Omit the final newline.
+	#[arg(long)]
+	no_final_newline: bool,
+}
+
+#[derive(Clone, Copy, Debug, ValueEnum)]
+enum CliIndentStyle {
+	Spaces,
+	Tabs,
+}
+
+#[derive(Clone, Copy, Debug, ValueEnum)]
+enum CliSeparator {
+	Comma,
+	Semicolon,
+}
+
+#[derive(Clone, Copy, Debug, ValueEnum)]
+enum CliAttrSeparator {
+	Smart,
+	Comma,
+	Semicolon,
+}
+
 #[derive(Clone, Copy, Debug, ValueEnum)]
 enum OutputFormat {
 	/// Mix syntax, intended for people.
@@ -92,6 +169,10 @@ fn main() -> ExitCode {
 }
 
 fn run(cli: Cli) -> Result<(), String> {
+	if let Some(Command::Fmt(args)) = cli.command {
+		return run_fmt(args);
+	}
+
 	let input = match (cli.expr, cli.file) {
 		(Some(source), None) => Input::Virtual {
 			name: PathBuf::from(EXPR_NAME),
@@ -108,7 +189,7 @@ fn run(cli: Cli) -> Result<(), String> {
 			}
 		}
 		(None, Some(path)) => Input::File(path),
-		(None, None) => unreachable!("clap requires an input"),
+		(None, None) => return Err("provide a FILE, --expr, or the fmt command".into()),
 		(Some(_), Some(_)) => unreachable!("clap rejects conflicting inputs"),
 	};
 
@@ -168,6 +249,93 @@ fn run(cli: Cli) -> Result<(), String> {
 		}
 	}
 	Ok(())
+}
+
+fn run_fmt(args: FmtArgs) -> Result<(), String> {
+	let stdin = args.file.as_os_str() == "-";
+	let source = if stdin {
+		let mut source = String::new();
+		io::stdin()
+			.read_to_string(&mut source)
+			.map_err(|error| format!("failed to read stdin: {error}"))?;
+		source
+	} else {
+		std::fs::read_to_string(&args.file)
+			.map_err(|error| format!("cannot read {}: {error}", args.file.display()))?
+	};
+
+	if contains_comments(&source) {
+		return Err(
+			"cannot format source containing comments: the parser does not preserve them".into(),
+		);
+	}
+
+	let source = Rc::new(source);
+	let loaded = source.clone();
+	let loader = FileLoader::new(move |_| Ok(loaded.clone()));
+	let (_, fid) = loader
+		.load(args.file.as_path())
+		.map_err(|error| error.into_owned())?;
+	let (expr, reports) = MixParser::parse(&source, fid);
+	let expr = expr.map_err(|()| reports.render(&loader.files()).join("\n"))?;
+	let options = FormatOptions {
+		indent_style: match args.indent {
+			CliIndentStyle::Spaces => IndentStyle::Spaces,
+			CliIndentStyle::Tabs => IndentStyle::Tabs,
+		},
+		indent_width: args.indent_width,
+		attr_separator: args.attr_separator.into(),
+		let_separator: args.let_separator.into(),
+		pattern_separator: args.pattern_separator.into(),
+		trailing_separator: !args.no_trailing_separator,
+		final_newline: !args.no_final_newline,
+		max_inline_width: args.max_inline_width,
+	};
+	let formatted = format_ast(&expr, &options);
+
+	if args.check {
+		if *source == formatted {
+			return Ok(());
+		}
+		return Err(format!("{} is not formatted", args.file.display()));
+	}
+	if stdin || args.stdout {
+		print!("{formatted}");
+	} else if *source != formatted {
+		std::fs::write(&args.file, formatted)
+			.map_err(|error| format!("cannot write {}: {error}", args.file.display()))?;
+	}
+	Ok(())
+}
+
+fn contains_comments(source: &str) -> bool {
+	let mut lexer = Lexer::new(source);
+	loop {
+		match lexer.next_tok().0 {
+			Ok(Token::Comment(_)) => return true,
+			Ok(Token::Eof) => return false,
+			Ok(_) | Err(_) => {}
+		}
+	}
+}
+
+impl From<CliSeparator> for SeparatorStyle {
+	fn from(value: CliSeparator) -> Self {
+		match value {
+			CliSeparator::Comma => Self::Comma,
+			CliSeparator::Semicolon => Self::Semicolon,
+		}
+	}
+}
+
+impl From<CliAttrSeparator> for AttrSeparatorStyle {
+	fn from(value: CliAttrSeparator) -> Self {
+		match value {
+			CliAttrSeparator::Smart => Self::Smart,
+			CliAttrSeparator::Comma => Self::Comma,
+			CliAttrSeparator::Semicolon => Self::Semicolon,
+		}
+	}
 }
 
 fn value_to_json(

@@ -1,6 +1,7 @@
 pub mod bytecode;
 pub mod compiler;
 pub mod files;
+pub mod formatter;
 pub mod lex;
 pub mod mir;
 pub mod parse;

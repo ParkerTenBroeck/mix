@@ -1,67 +1,73 @@
 let
-  ok = value: {ok=value};
-  err = value: {err=value};
-  faital = value: {faital=value};
+  ok = value: { ok = value };
+  err = value: { err = value };
+  faital = value: { faital = value };
 
-  foldr :: (T -> T -> R) -> R -> [T] -> R = func: base: list: 
-    let 
-        rec = curr: i: let 
-            res = func curr list.${i};
-        in if list.len == i 
-            then curr
-            else rec res (i+1)
+  foldr :: (T -> T -> R) -> R -> [T] -> R = func: base: list:
+    let
+      rec = curr: i:
+        let
+          res = func curr list.${i};
+        in
+          if list.len == i
+          then curr
+          else rec res (i + 1);
     in rec base 0;
-  
+
   lex = let
-    mkMatcher = kind: regex: 
-                  let 
-                    matcher = builtins.match ("^(\s*)("+regex+")(.*)$") 
-                  in input: 
-                    let
-                      matched = matcher input;
-                    in
-                      if matched.len == 0 
-                      then err false 
-                      else ok {tok={kind,value=matched.2}, next = lex matched.3};
-                    
-    eof = let 
-              matcher = builtins.match "^(\s*)$" 
-            in input: let
-              matched = matcher input;
-              eof = ok {tok={kind="eof",value=matched.1}, next = eof};
-            in if matched.len == 0 
-                then err false 
-                else eof;
+    mkMatcher = kind: regex:
+      let
+        matcher = builtins.match ("^(\s*)(" + regex + ")(.*)$");
+      in input:
+        let
+          matched = matcher input;
+        in
+          if matched.len == 0
+          then err false
+          else ok {
+            tok = { kind, value = matched.2 };
+            next = lex matched.3;
+          };
+
+    eof = let
+      matcher = builtins.match "^(\s*)$";
+    in input:
+      let
+        matched = matcher input;
+        eof = ok {
+          tok = { kind = "eof", value = matched.1 };
+          next = eof;
+        };
+      in
+        if matched.len == 0
+        then err false
+        else eof;
 
     matchers = [
-        (mkMatcher "num" "[0-9]+"),
-        (mkMatcher "ident" "[a-zA-Z][a-zA-Z0-9'_]*"),
-        (mkMatcher "plus" "\+"),
-        (mkMatcher "minus" "-"),
-        (mkMatcher "times" "\*"),
-        (mkMatcher "div" "/"),
-        (mkMatcher "parenL" "\("),
-        (mkMatcher "parenR" "\)"),
-        eof,
+      (mkMatcher "num" "[0-9]+"),
+      (mkMatcher "ident" "[a-zA-Z][a-zA-Z0-9'_]*"),
+      (mkMatcher "plus" "\+"),
+      (mkMatcher "minus" "-"),
+      (mkMatcher "times" "\*"),
+      (mkMatcher "div" "/"),
+      (mkMatcher "parenL" "\("),
+      (mkMatcher "parenR" "\)"),
+      eof,
     ];
 
     fail = str: err ("Failed to match " + str);
-    mkChain = next: curr: str: 
-                let 
-                    res = curr str; 
-                in 
-                    if res?ok 
-                    then res 
-                    else next str;
+
+    mkChain = next: curr: str:
+      let
+        res = curr str;
+      in
+        if res ? ok
+        then res
+        else next str;
 
     matchTok = foldr mkChain fail matchers;
-       
   in matchTok;
 
-    tokens = lex input;
-
-    
-
-
-    input = "3 meow 3 s'_";
+  tokens = lex input;
+  input = "3 meow 3 s'_";
 in tokens
