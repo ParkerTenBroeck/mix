@@ -6,7 +6,7 @@ use crate::{
 	bytecode::CodePos,
 	runtime::{
 		lazy::{LazyValue, LazyValueKind},
-		value::Value,
+		value::{DeepState, Value},
 	},
 };
 
@@ -17,7 +17,7 @@ pub struct List {
 
 #[derive(Clone, Default, Trace)]
 pub struct ListInner {
-	deep: Cell<bool>,
+	deep: Cell<DeepState>,
 	list: VecDeque<LazyValue>,
 	created_at: Option<CodePos>,
 }
@@ -48,7 +48,7 @@ impl List {
 	pub fn with_capacity(capacity: usize) -> List {
 		Self {
 			inner: Gc::new(ListInner {
-				deep: Cell::new(true),
+				deep: Cell::new(DeepState::Deep),
 				list: VecDeque::with_capacity(capacity),
 				created_at: None,
 			}),
@@ -58,7 +58,7 @@ impl List {
 	pub fn with_capacity_at(capacity: usize, pos: CodePos) -> List {
 		Self {
 			inner: Gc::new(ListInner {
-				deep: Cell::new(true),
+				deep: Cell::new(DeepState::Deep),
 				list: VecDeque::with_capacity(capacity),
 				created_at: Some(pos),
 			}),
@@ -69,7 +69,7 @@ impl List {
 		Gc::as_ptr(&self.inner) as *const () as usize
 	}
 
-	pub fn deeply_evaluated(&self) -> bool {
+	pub fn deep_state(&self) -> DeepState {
 		self.inner.deep.get()
 	}
 
@@ -82,12 +82,16 @@ impl List {
 	///
 	/// doing otherwise will cause incorrect (but not fatal or undefined) behavior when the VM tries to deeply evaluate it
 	pub fn set_deeply_evaluated(&self) {
-		self.inner.deep.set(true);
+		self.inner.deep.set(DeepState::Deep);
+	}
+
+	pub fn begin_deeply_evaluated(&self) {
+		self.inner.deep.set(DeepState::Evaluating);
 	}
 
 	pub fn get_mut(&mut self) -> &mut VecDeque<LazyValue> {
 		let inner = Gc::make_mut(&mut self.inner);
-		inner.deep.set(false);
+		inner.deep.set(DeepState::Shallow);
 		&mut inner.list
 	}
 }

@@ -22,6 +22,7 @@ async fn deep_eval_frame(mut ctx: NativeCtx, arg: LazyValue) -> Result<Value, Ev
 		}
 		_ => {}
 	}
+	res.set_deeply_evaluated();
 	Ok(res)
 }
 
@@ -32,7 +33,7 @@ impl LocalEvaluator {
 			Value::AttrSet(attrs) => {
 				for lazy in attrs.values() {
 					if let LazyValueKind::Value(value) = lazy.try_get_value()
-						&& value.deeply_evaluated()
+						&& !value.deep_state().shallow()
 					{
 						continue;
 					}
@@ -42,7 +43,7 @@ impl LocalEvaluator {
 			Value::List(list) => {
 				for lazy in list.iter() {
 					if let LazyValueKind::Value(value) = lazy.try_get_value()
-						&& value.deeply_evaluated()
+						&& !value.deep_state().shallow()
 					{
 						continue;
 					}
@@ -52,9 +53,8 @@ impl LocalEvaluator {
 			_ => {}
 		}
 
-		value.set_deeply_evaluated();
-
 		if not_deep_evaluated == 0 {
+			value.set_deeply_evaluated();
 			Ok(ThunkResult::Value(value))
 		} else {
 			let pos = value
@@ -66,7 +66,7 @@ impl LocalEvaluator {
 	}
 
 	pub(super) fn get_deep_frame(&self, pos: NativePosKind, value: Value) -> Frame {
-		value.set_deeply_evaluated();
+		value.begin_deeply_evaluated();
 
 		let future = deep_eval_frame(NativeCtx::get(), value.into());
 		let state = Box::pin(future);

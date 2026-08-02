@@ -3,7 +3,7 @@ use crate::runtime::{
 	eval::{ByteCodeFrame, EvalError, Frame, FrameKind, LocalEvaluator, func::ApplyResult},
 	lazy::{LazyValue, LazyValueKind},
 	thunk::{Thunk, ThunkState},
-	value::{Lambda, Value},
+	value::{DeepState, Lambda, Value},
 };
 
 #[derive(Debug)]
@@ -25,7 +25,7 @@ impl LocalEvaluator {
 		value: Value,
 		deep: bool,
 	) -> Result<ThunkResult, EvalError> {
-		if !deep || value.deeply_evaluated() {
+		if !deep || !value.deep_state().shallow() {
 			return Ok(ThunkResult::Value(value));
 		}
 

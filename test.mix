@@ -10,8 +10,7 @@ let
                     matcher = builtins.match ("^(\s*)("+regex+")(.*)$") 
                   in input: 
                     let
-                      matched' = matcher input;
-                      matched = builtins.trace {kind, matched', input} matched';
+                      matched = matcher input;
                     in
                       if matched.len == 0 
                       then err false 
@@ -21,24 +20,34 @@ let
               matcher = builtins.match "^(\s*)$" 
             in input: let
               matched = matcher input;
+              eof = ok {tok={kind="eof",value=matched.1}, next = eof};
             in if matched.len == 0 
                 then err false 
-                else ok {tok={kind="eof",value=matched.1}};
+                else eof;
                 
     num' = mkMatcher "num" "[0-9]+";
     ident' = mkMatcher "ident" "[a-zA-Z][a-zA-Z0-9'_]*";
     plus' = mkMatcher "plus" "\+";
+    minus' = mkMatcher "minus" "-";
+    times' = mkMatcher "times" "\*";
+    div' = mkMatcher "div" "/";
+    parenL' = mkMatcher "parenL" "\(";
+    parenR' = mkMatcher "parenR" "\)";
   in str: 
     let 
       num = num' str;
       ident = ident' str;
       plus = plus' str;
       eof = eof' str;
-    in 
-      if num?ok then num
-      else if ident?ok then ident
-      else if plus?ok then plus
-      else if eof?ok then eof
-      else err ("Failed to match " + str) 
 
-in lex "3 meow 3'_"
+      res = num.ok?ident.ok?plus.ok?eof.ok?false;
+    in 
+        if res == false 
+        then err ("Failed to match " + str)
+        else res;
+
+    tokens = lex input;
+
+
+    input = "3 meow 3 s'_" 
+in tokens

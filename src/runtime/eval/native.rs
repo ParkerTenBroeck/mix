@@ -67,7 +67,7 @@ impl LocalEvaluator {
 		match res {
 			super::ThunkResult::Value(value) => {
 				self.push_value(value)?;
-				Ok(EvalStep::Ret)
+				Ok(EvalStep::Pending) // continue back into this frame
 			}
 			super::ThunkResult::Frame(frame) => Ok(EvalStep::BeginFrame(frame)),
 		}
@@ -150,7 +150,7 @@ impl NativeCtx {
 
 	pub async fn eval_lazy_deep(&mut self, arg: LazyValue) -> Result<Value, EvalError> {
 		match arg.try_get_value() {
-			LazyValueKind::Value(value) if value.deeply_evaluated() => Ok(value),
+			LazyValueKind::Value(value) if !value.deep_state().shallow() => Ok(value),
 			LazyValueKind::Value(value) => {
 				Self::with(|ctx| {
 					debug_assert!(matches!(ctx.to_eval, ToEval::None));

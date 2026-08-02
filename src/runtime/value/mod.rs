@@ -18,6 +18,24 @@ use crate::{bytecode::CodePos, runtime::eval::EvalError};
 
 use dumpster::Trace;
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Trace)]
+pub enum DeepState {
+	#[default]
+	Shallow,
+	Evaluating,
+	Deep,
+}
+
+impl DeepState {
+	pub fn deep(&self) -> bool {
+		matches!(self, DeepState::Deep)
+	}
+
+	pub fn shallow(&self) -> bool {
+		matches!(self, DeepState::Shallow)
+	}
+}
+
 #[derive(Clone, Debug, Trace)]
 pub enum Value {
 	Bool(bool),
@@ -56,11 +74,19 @@ impl Value {
 		}
 	}
 
-	pub fn deeply_evaluated(&self) -> bool {
+	pub fn begin_deeply_evaluated(&self) {
 		match self {
-			Value::List(list) => list.deeply_evaluated(),
-			Value::AttrSet(attr_set) => attr_set.deeply_evaluated(),
-			_ => true,
+			Value::List(list) => list.begin_deeply_evaluated(),
+			Value::AttrSet(attr_set) => attr_set.begin_deeply_evaluated(),
+			_ => {}
+		}
+	}
+
+	pub fn deep_state(&self) -> DeepState {
+		match self {
+			Value::List(list) => list.deep_state(),
+			Value::AttrSet(attr_set) => attr_set.deep_state(),
+			_ => DeepState::Deep,
 		}
 	}
 

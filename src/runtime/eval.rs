@@ -92,7 +92,8 @@ impl Evaluator {
 	) -> Result<Option<Value>, EvalError> {
 		loop {
 			let Some(frame) = self.frames.last_mut() else {
-				return Ok(self.local.value_stack.pop());
+				// return Ok(self.local.value_stack.pop());
+				todo!()
 			};
 
 			let res = match &mut frame.kind {
@@ -115,7 +116,7 @@ impl Evaluator {
 				EvalStep::Pending if !fule.fule() => return Ok(None),
 				EvalStep::Pending => {}
 
-				EvalStep::Ret if frame.deep && !self.local.peek_value()?.deeply_evaluated() => {
+				EvalStep::Ret if frame.deep && self.local.peek_value()?.deep_state().shallow() => {
 					let frame = self.pop_frame()?;
 
 					let pos = match frame.kind {

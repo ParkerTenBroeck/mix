@@ -10,7 +10,7 @@ use crate::{
 	bytecode::CodePos,
 	runtime::{
 		lazy::{LazyValue, LazyValueKind},
-		value::{StringKind, Value},
+		value::{DeepState, StringKind, Value},
 	},
 };
 
@@ -26,9 +26,9 @@ impl std::fmt::Debug for AttrSet {
 }
 
 #[derive(Clone, Default)]
-pub struct AttrSetInner {
+struct AttrSetInner {
 	attrs: HashMap<StringKind, LazyValue>,
-	deep: Cell<bool>,
+	deep: Cell<DeepState>,
 	created_at: Option<CodePos>,
 }
 
@@ -73,9 +73,8 @@ impl std::fmt::Debug for AttrValueDebug<'_> {
 
 unsafe impl<Z: dumpster::Visitor> dumpster::TraceWith<Z> for AttrSetInner {
 	fn accept(&self, visitor: &mut Z) -> Result<(), ()> {
-		for (k, v) in &self.attrs {
-			k.accept(visitor)?;
-			v.accept(visitor)?;
+		for value in self.attrs.values() {
+			value.accept(visitor)?;
 		}
 		Ok(())
 	}
@@ -88,11 +87,11 @@ impl AttrSet {
 
 	pub fn get_mut(&mut self) -> &mut HashMap<StringKind, LazyValue> {
 		let inner = Gc::make_mut(&mut self.inner);
-		inner.deep.set(false);
+		inner.deep.set(DeepState::Shallow);
 		&mut inner.attrs
 	}
 
-	pub fn deeply_evaluated(&self) -> bool {
+	pub fn deep_state(&self) -> DeepState {
 		self.inner.deep.get()
 	}
 
@@ -101,7 +100,11 @@ impl AttrSet {
 	///
 	/// doing otherwise will cause incorrect (but not fatal or undefined) behavior when the VM tries to deeply evaluate it
 	pub fn set_deeply_evaluated(&self) {
-		self.inner.deep.set(true);
+		self.inner.deep.set(DeepState::Deep);
+	}
+
+	pub fn begin_deeply_evaluated(&self) {
+		self.inner.deep.set(DeepState::Evaluating);
 	}
 
 	pub fn new() -> Self {
@@ -112,7 +115,7 @@ impl AttrSet {
 		Self {
 			inner: Gc::new(AttrSetInner {
 				attrs: Default::default(),
-				deep: Cell::new(true),
+				deep: Cell::new(DeepState::Deep),
 				created_at: Some(pos),
 			}),
 		}
@@ -122,7 +125,7 @@ impl AttrSet {
 		Self {
 			inner: Gc::new(AttrSetInner {
 				attrs,
-				deep: Cell::new(true),
+				deep: Cell::new(DeepState::Shallow),
 				created_at: None,
 			}),
 		}
