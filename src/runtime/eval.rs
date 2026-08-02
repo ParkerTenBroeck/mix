@@ -24,10 +24,10 @@ use crate::{
 	},
 };
 
-#[derive(Default)]
 pub struct Evaluator {
 	pub local: LocalEvaluator,
 	pub frames: Vec<Frame>,
+	max_frames: usize,
 }
 
 enum EvalStep {
@@ -37,23 +37,29 @@ enum EvalStep {
 }
 
 impl Evaluator {
+	fn new(runtime: &Runtime) -> Self {
+		Self {
+			local: LocalEvaluator::new(runtime),
+			frames: vec![],
+			max_frames: runtime.limits.max_frames,
+		}
+	}
+
 	pub fn begin_eval(
 		runtime: &mut Runtime,
 		lazy: LazyValue,
 		deep: bool,
 	) -> Result<Evaluator, ErrorTrace> {
-		let mut myself = Self {
-			local: Default::default(),
-			frames: vec![],
-		};
+		let mut myself = Self::new(runtime);
 		let initial = myself
 			.local
 			.eval_lazy(runtime, lazy, deep)
 			.map_err(|error| ErrorTrace::build(runtime, &myself, error))?;
 		match initial {
-			ThunkResult::Value(value) => myself.local.value_stack.push(value),
-			ThunkResult::Frame(frame) => myself.frames.push(frame),
+			ThunkResult::Value(value) => myself.local.push_value(value),
+			ThunkResult::Frame(frame) => myself.begin_frame(frame),
 		}
+		.map_err(|error| ErrorTrace::build(runtime, &myself, error))?;
 		Ok(myself)
 	}
 
@@ -62,21 +68,28 @@ impl Evaluator {
 		lambda: Lambda,
 		arg: LazyValue,
 	) -> Result<Evaluator, ErrorTrace> {
-		let mut myself = Self::default();
+		let mut myself = Self::new(runtime);
 		let result = myself
 			.local
 			.eval_apply(runtime, lambda, arg, None, false)
 			.map_err(|error| ErrorTrace::build(runtime, &myself, error))?;
 
 		match result {
-			ThunkResult::Value(value) => myself.local.value_stack.push(value),
-			ThunkResult::Frame(frame) => myself.frames.push(frame),
+			ThunkResult::Value(value) => myself.local.push_value(value),
+			ThunkResult::Frame(frame) => myself.begin_frame(frame),
 		}
+		.map_err(|error| ErrorTrace::build(runtime, &myself, error))?;
 
 		Ok(myself)
 	}
 
 	fn begin_frame(&mut self, frame: Frame) -> Result<(), EvalError> {
+		if self.frames.len() >= self.max_frames {
+			return Err(EvalError::LimitExceeded {
+				resource: "frame stack",
+				limit: self.max_frames,
+			});
+		}
 		self.frames.push(frame);
 		Ok(())
 	}
@@ -139,14 +152,30 @@ impl Evaluator {
 	}
 }
 
-#[derive(Default)]
 pub struct LocalEvaluator {
 	pub value_stack: Vec<Value>,
 	pub lazy_stack: Vec<LazyValue>,
+	max_values: usize,
+	max_thunks: usize,
 }
 
 impl LocalEvaluator {
+	fn new(runtime: &Runtime) -> Self {
+		Self {
+			value_stack: vec![],
+			lazy_stack: vec![],
+			max_values: runtime.limits.max_values,
+			max_thunks: runtime.limits.max_thunks,
+		}
+	}
+
 	fn push_value(&mut self, value: Value) -> Result<(), EvalError> {
+		if self.value_stack.len() >= self.max_values {
+			return Err(EvalError::LimitExceeded {
+				resource: "value stack",
+				limit: self.max_values,
+			});
+		}
 		self.value_stack.push(value);
 		Ok(())
 	}
@@ -190,6 +219,12 @@ impl LocalEvaluator {
 	}
 
 	fn push_lazy(&mut self, value: LazyValue) -> Result<(), EvalError> {
+		if self.lazy_stack.len() >= self.max_thunks {
+			return Err(EvalError::LimitExceeded {
+				resource: "thunk stack",
+				limit: self.max_thunks,
+			});
+		}
 		self.lazy_stack.push(value);
 		Ok(())
 	}

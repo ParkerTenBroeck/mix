@@ -79,6 +79,9 @@ fn error_title(error: &EvalError) -> String {
 	match error {
 		EvalError::Custom(message) => message.to_string(),
 		EvalError::Reports(_) => "evaluation failed".into(),
+		EvalError::LimitExceeded { resource, limit } => {
+			format!("maximum {resource} limit of {limit} exceeded")
+		}
 		EvalError::TypeMismatch { expected, got } => {
 			format!("type mismatch: expected {expected}, got {got}")
 		}

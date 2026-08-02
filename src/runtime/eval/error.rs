@@ -9,8 +9,17 @@ use crate::{
 pub enum EvalError {
 	Custom(Cow<'static, str>),
 	Reports(Reports),
-	TypeMismatch { expected: ValueType, got: ValueType },
-	BinOpTypeMismatch { details: Cow<'static, str> },
+	LimitExceeded {
+		resource: &'static str,
+		limit: usize,
+	},
+	TypeMismatch {
+		expected: ValueType,
+		got: ValueType,
+	},
+	BinOpTypeMismatch {
+		details: Cow<'static, str>,
+	},
 	Arithmetic(Cow<'static, str>),
 	MissingAttr(Cow<'static, str>),
 	MissingBinding(Cow<'static, str>),

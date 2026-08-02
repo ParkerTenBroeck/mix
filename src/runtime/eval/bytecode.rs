@@ -204,7 +204,7 @@ impl LocalEvaluator {
 				let indexing = self.pop_value()?;
 				let lazy = Self::get_attr(&indexing, &index).ok().flatten();
 				if let Some(lazy) = lazy {
-					self.lazy_stack.push(lazy);
+					self.push_lazy(lazy)?;
 				} else {
 					next_pos = next_pos + else_off;
 				}

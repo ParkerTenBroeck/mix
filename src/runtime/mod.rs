@@ -28,8 +28,26 @@ use crate::{
 pub struct Runtime {
 	pub loader: FileLoader,
 	pub program: Program,
+	pub limits: RuntimeLimits,
 	loaded: HashMap<String, LazyValue>,
 	default_scope: Scope,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct RuntimeLimits {
+	pub max_frames: usize,
+	pub max_thunks: usize,
+	pub max_values: usize,
+}
+
+impl Default for RuntimeLimits {
+	fn default() -> Self {
+		Self {
+			max_frames: usize::MAX,
+			max_thunks: usize::MAX,
+			max_values: usize::MAX,
+		}
+	}
 }
 
 #[derive(Clone, Debug)]
@@ -53,8 +71,14 @@ impl Runtime {
 			loader,
 			default_scope: top_scope,
 			program: Program::new(),
+			limits: RuntimeLimits::default(),
 			loaded: Default::default(),
 		}
+	}
+
+	pub fn with_limits(mut self, limits: RuntimeLimits) -> Self {
+		self.limits = limits;
+		self
 	}
 
 	pub fn load(&mut self, path: &str) -> Result<LazyValue, LoadError> {

@@ -3,7 +3,7 @@ use crate::runtime::{
 	eval::{ByteCodeFrame, EvalError, Frame, FrameKind, LocalEvaluator, func::ApplyResult},
 	lazy::{LazyValue, LazyValueKind},
 	thunk::{Thunk, ThunkState},
-	value::{DeepState, Lambda, Value},
+	value::{Lambda, Value},
 };
 
 #[derive(Debug)]

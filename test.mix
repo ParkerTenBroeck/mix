@@ -3,6 +3,14 @@ let
   err = value: {err=value};
   faital = value: {faital=value};
 
+  foldr :: (T -> T -> R) -> R -> [T] -> R = func: base: list: 
+    let 
+        rec = curr: i: let 
+            res = func curr list.${i};
+        in if list.len == i 
+            then curr
+            else rec res (i+1)
+    in rec base 0;
   
   lex = let
     mkMatcher = kind: regex: 
@@ -16,7 +24,7 @@ let
                       then err false 
                       else ok {tok={kind,value=matched.2}, next = lex matched.3};
                     
-    eof' = let 
+    eof = let 
               matcher = builtins.match "^(\s*)$" 
             in input: let
               matched = matcher input;
@@ -24,30 +32,36 @@ let
             in if matched.len == 0 
                 then err false 
                 else eof;
-                
-    num' = mkMatcher "num" "[0-9]+";
-    ident' = mkMatcher "ident" "[a-zA-Z][a-zA-Z0-9'_]*";
-    plus' = mkMatcher "plus" "\+";
-    minus' = mkMatcher "minus" "-";
-    times' = mkMatcher "times" "\*";
-    div' = mkMatcher "div" "/";
-    parenL' = mkMatcher "parenL" "\(";
-    parenR' = mkMatcher "parenR" "\)";
-  in str: 
-    let 
-      num = num' str;
-      ident = ident' str;
-      plus = plus' str;
-      eof = eof' str;
 
-      res = num.ok?ident.ok?plus.ok?eof.ok?false;
-    in 
-        if res == false 
-        then err ("Failed to match " + str)
-        else res;
+    matchers = [
+        (mkMatcher "num" "[0-9]+"),
+        (mkMatcher "ident" "[a-zA-Z][a-zA-Z0-9'_]*"),
+        (mkMatcher "plus" "\+"),
+        (mkMatcher "minus" "-"),
+        (mkMatcher "times" "\*"),
+        (mkMatcher "div" "/"),
+        (mkMatcher "parenL" "\("),
+        (mkMatcher "parenR" "\)"),
+        eof,
+    ];
+
+    fail = str: err ("Failed to match " + str);
+    mkChain = next: curr: str: 
+                let 
+                    res = curr str; 
+                in 
+                    if res?ok 
+                    then res 
+                    else next str;
+
+    matchTok = foldr mkChain fail matchers;
+       
+  in matchTok;
 
     tokens = lex input;
 
+    
 
-    input = "3 meow 3 s'_" 
+
+    input = "3 meow 3 s'_";
 in tokens
